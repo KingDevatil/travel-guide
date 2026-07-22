@@ -1,0 +1,5 @@
+import type { Expense, Leg, PackingItem, Participant, Stop, Trip } from "../../domain/models";
+import { getExpenses, getLegs, getPackingItems, getParticipants, getStops } from "../../db/trip-repository";
+export interface TravelBackup { format: "travel-planner-backup"; schemaVersion: 1; exportedAt: string; appVersion: string; trip: Trip; participants: Participant[]; stops: Stop[]; legs: Leg[]; expenses: Expense[]; packingItems: PackingItem[]; }
+export async function exportTrip(trip: Trip): Promise<TravelBackup> { const [participants,stops,legs,expenses,packingItems]=await Promise.all([getParticipants(trip.id),getStops(trip.id),getLegs(trip.id),getExpenses(trip.id),getPackingItems(trip.id)]); return {format:"travel-planner-backup",schemaVersion:1,exportedAt:new Date().toISOString(),appVersion:"1.0.0",trip,participants,stops,legs,expenses,packingItems}; }
+export function downloadBackup(backup: TravelBackup) { const url=URL.createObjectURL(new Blob([JSON.stringify(backup,null,2)],{type:"application/json"})); const a=document.createElement("a");a.href=url;a.download=`${backup.trip.title}-backup.json`;a.click();URL.revokeObjectURL(url); }

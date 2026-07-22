@@ -1,0 +1,10 @@
+{
+  "name": "旅程册",
+  "short_name": "旅程册",
+  "description": "时间线、地图、AA 与行李清单一体的旅行规划工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ff5a36",
+  "lang": "zh-CN"
+}

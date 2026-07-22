@@ -1,0 +1,70 @@
+import type { Day, ScheduleItem } from "../types";
+
+export const sampleDays: Day[] = [
+  { id: "d1", date: "10月12日", weekday: "周一", city: "大阪", count: 3 },
+  { id: "d2", date: "10月13日", weekday: "周二", city: "京都", count: 2 },
+  { id: "d3", date: "10月14日", weekday: "周三", city: "京都", count: 1 },
+];
+
+export const sampleItems: ScheduleItem[] = [
+  {
+    id: "s1",
+    dayId: "d1",
+    time: "09:40",
+    title: "抵达大阪",
+    location: "关西国际机场",
+    kind: "arrival",
+    detail: "航班 NH17 · 到达大厅 1F",
+    notes: "取行李后前往 JR 关西机场站购买 ICOCA 卡",
+  },
+  {
+    id: "s2",
+    dayId: "d1",
+    time: "18:30",
+    title: "道顿堀晚餐",
+    location: "道顿堀·心斋桥",
+    kind: "food",
+    detail: "蟹道乐道顿堀本店",
+    notes: "建议提前 30 分钟排队；备选：一兰拉面",
+  },
+  {
+    id: "s3",
+    dayId: "d1",
+    time: "10:15",
+    title: "前往京都",
+    location: "JR 大阪站",
+    kind: "train",
+    detail: "JR 京都线新快速 · 约 28 分钟",
+    notes: "指定席无需预约；建议右侧靠窗看风景",
+  },
+  {
+    id: "s4",
+    dayId: "d2",
+    time: "12:00",
+    title: "清水寺参拜",
+    location: "京都市东山区",
+    kind: "other",
+    detail: "世界文化遗产 · 参观约 1.5 小时",
+    notes: "门票 400 日元；二年坂散步",
+  },
+  {
+    id: "s5",
+    dayId: "d2",
+    time: "18:00",
+    title: "祇园怀石料理",
+    location: "祇园花见小路",
+    kind: "food",
+    detail: "花乡 祇园本店",
+    notes: "需穿袜子（榻榻米座）；预约 18:00",
+  },
+  {
+    id: "s6",
+    dayId: "d3",
+    time: "09:00",
+    title: "伏见稻荷大社",
+    location: "京都市伏见区",
+    kind: "other",
+    detail: "千本鸟居 · 参观约 2 小时",
+    notes: "建议清晨前往避开人潮；全程约需 2 小时",
+  },
+];
