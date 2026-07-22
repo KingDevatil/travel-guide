@@ -25,6 +25,7 @@ export function useItinerary(tripId?: string) {
   }, [refresh, stops, tripId]);
   const saveLeg = useCallback(async (draft: LegDraft, current?: Leg) => {
     if (!tripId) throw new Error("请选择行程");
+    if (!draft.fromStopId || !draft.toStopId || draft.fromStopId === draft.toStopId) throw new Error("请选择两个不同的行程节点");
     if (draft.arrivesAt && draft.departsAt && draft.arrivesAt < draft.departsAt) throw new Error("到达时间不能早于出发时间");
     const { expenseAmountMinor, expenseCurrency, ...legDraft } = draft;
     const leg: Leg = current ? { ...current, ...legDraft } : { ...legDraft, id: crypto.randomUUID(), tripId };

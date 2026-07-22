@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import type { Trip } from "../../domain/models";
 import type { TripDraft } from "../../hooks/useTrips";
 import { getStops } from "../../db/trip-repository";
@@ -22,14 +23,14 @@ export function TripEditor({ trip, onSave, onClose }: TripEditorProps) {
   };
   return <div className="dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="trip-editor-title">
     <form className="dialog-panel dialog-form" onSubmit={submit}>
-      <div className="dialog-header"><h2 id="trip-editor-title" className="dialog-title">{trip ? "编辑行程" : "新建行程"}</h2></div>
+      <div className="dialog-header dialog-wide"><div><h2 id="trip-editor-title" className="dialog-title">{trip ? "编辑行程" : "新建行程"}</h2><p>修改名称、日期和行程默认设置。</p></div><button type="button" className="dialog-close-btn" onClick={onClose} aria-label="关闭行程编辑"><X aria-hidden="true" /></button></div>
       <label className="dialog-field">行程名称<input className="dialog-input" autoFocus value={draft.title} onChange={(e) => update("title", e.target.value)} /></label>
       <label className="dialog-field">开始日期<input className="dialog-input" type="date" value={draft.startDate} onChange={(e) => update("startDate", e.target.value)} /></label>
       <label className="dialog-field">结束日期<input className="dialog-input" type="date" value={draft.endDate} onChange={(e) => update("endDate", e.target.value)} /></label>
       <label className="dialog-field">时区<input className="dialog-input" value={draft.timezone} onChange={(e) => update("timezone", e.target.value)} /></label>
       <label className="dialog-field">默认币种<input className="dialog-input" value={draft.defaultCurrency} maxLength={10} onChange={(e) => update("defaultCurrency", e.target.value.toUpperCase())} /></label>
-      {error && <p className="dialog-error">{error}</p>}
-      <div className="dialog-actions"><button type="button" className="dialog-btn-cancel" onClick={onClose}>取消</button><button className="dialog-btn-submit" disabled={saving}>{saving ? "保存中…" : "保存"}</button></div>
+      {error && <p className="dialog-error dialog-wide" role="alert">{error}</p>}
+      <div className="dialog-actions dialog-wide"><button type="button" className="dialog-btn-cancel" onClick={onClose}>取消</button><button className="dialog-btn-submit" disabled={saving}>{saving ? "保存中…" : "保存"}</button></div>
     </form>
   </div>;
 }
