@@ -5,7 +5,23 @@ import App from "../src/App";
 import { db } from "../src/db/travel-db";
 
 describe("App", () => {
-  beforeEach(async () => { localStorage.clear(); await db.delete(); await db.open(); });
+  beforeEach(async () => {
+    localStorage.clear();
+    await db.delete();
+    await db.open();
+    const now = new Date().toISOString();
+    await db.trips.add({ id: "starter-test-trip", schemaVersion: 1, title: "日本关西 6 日", startDate: "2025-10-12", endDate: "2025-10-17", timezone: "Asia/Tokyo", defaultCurrency: "JPY", participantIds: [], createdAt: now, updatedAt: now });
+  });
+
+  it("starts with no trip and offers an explicit create action", async () => {
+    await db.trips.clear();
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "还没有行程" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建行程" })).toBeInTheDocument();
+    expect(screen.queryByText("日本关西 6 日")).not.toBeInTheDocument();
+    expect(await db.trips.count()).toBe(0);
+  });
 
   it("renders the selected persisted trip", async () => {
     render(<App />);

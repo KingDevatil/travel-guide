@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Trip } from "../domain/models";
 import {
   archiveTrip,
@@ -11,15 +11,6 @@ import {
 } from "../db/trip-repository";
 
 export type TripDraft = Pick<Trip, "title" | "startDate" | "endDate" | "timezone" | "defaultCurrency">;
-
-const starterTrip: TripDraft = {
-  title: "日本关西 6 日",
-  startDate: "2025-10-12",
-  endDate: "2025-10-17",
-  timezone: "Asia/Tokyo",
-  defaultCurrency: "JPY",
-};
-const starterInitializedKey = "travel-planner:starter-initialized:v1";
 
 function makeTrip(draft: TripDraft): Trip {
   const now = new Date().toISOString();
@@ -37,7 +28,6 @@ export function useTrips() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const starterPromise = useRef<Promise<Trip | undefined> | undefined>(undefined);
 
   const refresh = useCallback(async () => {
     try {
@@ -59,23 +49,6 @@ export function useTrips() {
     return trip;
   }, [refresh]);
 
-  const ensureStarter = useCallback(async () => {
-    if (!starterPromise.current) starterPromise.current = (async () => {
-      const existing = await listTrips();
-      if (existing.length) {
-        localStorage.setItem(starterInitializedKey, "true");
-        return existing[0];
-      }
-      if (localStorage.getItem(starterInitializedKey)) return undefined;
-      const trip = await add(starterTrip);
-      localStorage.setItem(starterInitializedKey, "true");
-      return trip;
-    })();
-    const pending = starterPromise.current;
-    try { return await pending; }
-    finally { if (starterPromise.current === pending) starterPromise.current = undefined; }
-  }, [add]);
-
   const save = useCallback(async (trip: Trip) => {
     await updateTrip({ ...trip, updatedAt: new Date().toISOString() });
     await refresh();
@@ -92,5 +65,5 @@ export function useTrips() {
   const restore = useCallback(async (id: string) => { await restoreTrip(id); await refresh(); }, [refresh]);
   const remove = useCallback(async (id: string) => { await deleteTrip(id); await refresh(); }, [refresh]);
 
-  return { trips, loading, error, refresh, add, save, duplicate, archive, restore, remove, ensureStarter };
+  return { trips, loading, error, refresh, add, save, duplicate, archive, restore, remove };
 }
