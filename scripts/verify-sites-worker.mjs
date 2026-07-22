@@ -16,7 +16,7 @@ async function expectResponse(pathname, expectedStatus, accept = "*/*") {
   return response;
 }
 
-const indexResponse = await expectResponse("/", 200, "text/html");
+const indexResponse = await expectResponse("/", 200);
 const indexHtml = await indexResponse.text();
 if (!indexHtml.includes('id="root"')) {
   throw new Error("The Sites worker root response is not the Vite application shell");

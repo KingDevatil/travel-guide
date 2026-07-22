@@ -81,7 +81,9 @@ export default {
     const directResponse = serveAsset(url.pathname, request.method);
     if (directResponse) return directResponse;
 
-    if (request.headers.get("accept")?.includes("text/html")) {
+    const lastSegment = url.pathname.split("/").pop() || "";
+    const isApplicationRoute = url.pathname === "/" || !lastSegment.includes(".");
+    if (isApplicationRoute || request.headers.get("accept")?.includes("text/html")) {
       return serveAsset("/index.html", request.method);
     }
 
