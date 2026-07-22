@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && vite build --ssr worker/index.ts --outDir dist/server --emptyOutDir false",
+    "build": "tsc -b && vite build && node scripts/build-sites-worker.mjs && node scripts/verify-sites-worker.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
