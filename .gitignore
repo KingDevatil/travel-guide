@@ -14,6 +14,27 @@ dist-ssr
 .npm-cache
 .agents
 
+# Generated test and coverage output
+coverage
+.nyc_output
+playwright-report
+test-results
+
+# Tool and compiler caches
+.cache
+.vite
+*.tsbuildinfo
+.eslintcache
+
+# Packaged deployment artifacts and temporary files
+*.tar
+*.tar.gz
+*.zip
+*.tmp
+*.temp
+tmp
+temp
+
 # Local implementation task briefs
 /design-task-*.md
 /design/tasks/
