@@ -18,6 +18,22 @@ const knownPlaces: Array<PlaceSearchResult & { city: string; aliases: string[] }
   { id: "shanghai-sha", city: "上海", name: "上海虹桥国际机场", address: "上海市长宁区虹桥路2550号", latitude: 31.1979, longitude: 121.3363, aliases: ["虹桥机场", "sha", "hongqiao airport"] },
   { id: "shanghai-yuyuan", city: "上海", name: "豫园", address: "上海市黄浦区福佑路168号", latitude: 31.2270, longitude: 121.4921, aliases: ["上海豫园", "yu garden"] },
   { id: "shanghai-disney", city: "上海", name: "上海迪士尼度假区", address: "上海市浦东新区川沙新镇黄赵路310号", latitude: 31.1440, longitude: 121.6570, aliases: ["上海迪士尼", "shanghai disney"] },
+  {
+    id: "bangkok-bkk",
+    city: "曼谷",
+    name: "素万那普国际机场",
+    address: "999 Nong Prue, Bang Phli District, Samut Prakan 10540, Thailand",
+    latitude: 13.6900,
+    longitude: 100.7501,
+    aliases: [
+      "素万那普机场",
+      "苏万那普国际机场",
+      "苏万那普机场",
+      "suvarnabhumi international airport",
+      "suvarnabhumi airport",
+      "bkk",
+    ],
+  },
 ];
 
 const normalize = (value: string) => value.trim().toLocaleLowerCase().replace(/[\s'’.-]/g, "");
@@ -57,4 +73,3 @@ export async function searchPlaces(input: SearchPlacesInput, fetcher: typeof fet
   cache.set(cacheKey, results);
   return results;
 }
-

@@ -7,6 +7,14 @@ describe("place search", () => {
     expect(searchKnownPlaces({ query: "PVG", city: "上海", country: "中国" })[0]).toMatchObject({ name: "上海浦东国际机场" });
   });
 
+  it.each(["素万那普机场", "苏万那普机场", "Suvarnabhumi Airport", "BKK"])("matches Bangkok Suvarnabhumi Airport by %s", (query) => {
+    expect(searchKnownPlaces({ query, city: "曼谷", country: "泰国" })[0]).toMatchObject({
+      name: "素万那普国际机场",
+      latitude: 13.69,
+      longitude: 100.7501,
+    });
+  });
+
   it("uses an explicit remote search for arbitrary hotels and addresses", async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify([{ place_id: 88, name: "上海浦东香格里拉", display_name: "上海浦东香格里拉, 陆家嘴, 上海市, 中国", lat: "31.2387", lon: "121.5019" }]), { status: 200 }));
     const results = await searchPlaces({ query: "浦东香格里拉", city: "上海", country: "中国" }, fetcher as typeof fetch);

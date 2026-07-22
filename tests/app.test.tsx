@@ -116,6 +116,23 @@ describe("App", () => {
     expect(stops.every((stop) => Boolean(stop.address))).toBe(true);
   });
 
+  it("finds Suvarnabhumi Airport with its common Chinese name in Bangkok", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "添加节点" }));
+    const dialog = screen.getByRole("dialog", { name: "添加节点" });
+    await user.type(within(dialog).getByLabelText("所在城市"), "曼谷");
+    await user.click(within(dialog).getByRole("button", { name: "选择 曼谷，泰国" }));
+    await user.type(within(dialog).getByLabelText("具体地点或地址（可选）"), "素万那普机场");
+    await user.click(within(dialog).getByRole("button", { name: "搜索地点" }));
+
+    const result = await within(dialog).findByRole("button", { name: "选择地点 素万那普国际机场" });
+    expect(result).toHaveTextContent("999 Nong Prue");
+    await user.click(result);
+    expect(within(dialog).getByText("已定位具体地点：素万那普国际机场")).toBeInTheDocument();
+  });
+
   it("opens trip editing and deletion as a single top-level dialog", async () => {
     const user = userEvent.setup();
     render(<App />);
