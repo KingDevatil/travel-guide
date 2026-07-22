@@ -1,3 +1,5 @@
+import { cityCatalog } from "../data/cities";
+
 export interface PlaceSearchResult {
   id: string;
   name: string;
@@ -38,6 +40,58 @@ const knownPlaces: Array<PlaceSearchResult & { city: string; aliases: string[] }
 
 const normalize = (value: string) => value.trim().toLocaleLowerCase().replace(/[\s'’.-]/g, "");
 
+const countryCodes: Record<string, string> = {
+  日本: "jp",
+  中国: "cn",
+  韩国: "kr",
+  新加坡: "sg",
+  泰国: "th",
+  印度尼西亚: "id",
+  法国: "fr",
+  英国: "gb",
+  意大利: "it",
+  西班牙: "es",
+  美国: "us",
+  澳大利亚: "au",
+  加拿大: "ca",
+  阿联酋: "ae",
+  土耳其: "tr",
+};
+
+const cityCountryCodeOverrides: Record<string, string> = {
+  香港: "hk",
+  澳门: "mo",
+  台北: "tw",
+};
+
+export function buildPlaceSearchParams(input: SearchPlacesInput): URLSearchParams {
+  const city = cityCatalog.find((option) => option.name === input.city && (!input.country || option.country === input.country));
+  const params = new URLSearchParams({
+    q: input.query.trim(),
+    format: "jsonv2",
+    addressdetails: "1",
+    limit: "6",
+    "accept-language": "zh-CN,zh,en",
+  });
+
+  const countryCode = cityCountryCodeOverrides[input.city] ?? (input.country ? countryCodes[input.country] : undefined);
+  if (countryCode) params.set("countrycodes", countryCode);
+
+  if (city) {
+    const longitudeRadius = 1.5;
+    const latitudeRadius = 1.5;
+    params.set("viewbox", [
+      city.longitude - longitudeRadius,
+      city.latitude + latitudeRadius,
+      city.longitude + longitudeRadius,
+      city.latitude - latitudeRadius,
+    ].map((coordinate) => coordinate.toFixed(4)).join(","));
+    params.set("bounded", "0");
+  }
+
+  return params;
+}
+
 export function searchKnownPlaces({ query, city }: SearchPlacesInput): PlaceSearchResult[] {
   const target = normalize(query);
   if (!target) return [];
@@ -59,13 +113,7 @@ export async function searchPlaces(input: SearchPlacesInput, fetcher: typeof fet
   if (remainingDelay > 0) await new Promise((resolve) => setTimeout(resolve, remainingDelay));
   lastRemoteRequestAt = Date.now();
 
-  const params = new URLSearchParams({
-    q: [input.query, input.city, input.country].filter(Boolean).join(", "),
-    format: "jsonv2",
-    addressdetails: "1",
-    limit: "6",
-    "accept-language": "zh-CN,zh,en",
-  });
+  const params = buildPlaceSearchParams(input);
   const response = await fetcher(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error("地点搜索服务暂时不可用");
   const payload = await response.json() as Array<{ place_id: number; name?: string; display_name: string; lat: string; lon: string }>;
