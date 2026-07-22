@@ -38,14 +38,14 @@ describe("App", () => {
     await user.click(await screen.findByRole("button", { name: "添加节点" }));
     const dialog = screen.getByRole("dialog", { name: "添加节点" });
     expect(within(dialog).queryByLabelText("纬度（WGS84）")).not.toBeInTheDocument();
-    await user.type(within(dialog).getByLabelText("城市或目的地"), "京都");
+    await user.type(within(dialog).getByLabelText("所在城市"), "京都");
     await user.click(await within(dialog).findByRole("button", { name: "选择 京都，日本" }));
     await user.click(within(dialog).getByRole("button", { name: "保存节点" }));
     expect(await screen.findByText("京都")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     const secondDialog = screen.getByRole("dialog", { name: "添加节点" });
-    await user.type(within(secondDialog).getByLabelText("城市或目的地"), "大阪");
+    await user.type(within(secondDialog).getByLabelText("所在城市"), "大阪");
     await user.click(await within(secondDialog).findByRole("button", { name: "选择 大阪，日本" }));
     await user.click(within(secondDialog).getByRole("button", { name: "保存节点" }));
 
@@ -57,6 +57,35 @@ describe("App", () => {
     expect(stops.map((stop) => stop.city)).toEqual(expect.arrayContaining(["京都", "大阪"]));
     expect(stops.every((stop) => stop.latitude !== 0 && stop.longitude !== 0)).toBe(true);
     expect(await db.legs.count()).toBe(1);
+  });
+
+  it("plans multiple precise places inside the same city", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "添加节点" }));
+    let dialog = screen.getByRole("dialog", { name: "添加节点" });
+    await user.type(within(dialog).getByLabelText("所在城市"), "上海");
+    await user.click(within(dialog).getByRole("button", { name: "选择 上海，中国" }));
+    await user.type(within(dialog).getByLabelText("具体地点或地址（可选）"), "外滩");
+    await user.click(within(dialog).getByRole("button", { name: "搜索地点" }));
+    await user.click(await within(dialog).findByRole("button", { name: "选择地点 外滩" }));
+    await user.click(within(dialog).getByRole("button", { name: "保存节点" }));
+
+    await user.click(screen.getByRole("button", { name: "添加节点" }));
+    dialog = screen.getByRole("dialog", { name: "添加节点" });
+    await user.type(within(dialog).getByLabelText("所在城市"), "上海");
+    await user.click(within(dialog).getByRole("button", { name: "选择 上海，中国" }));
+    await user.type(within(dialog).getByLabelText("具体地点或地址（可选）"), "浦东机场");
+    await user.click(within(dialog).getByRole("button", { name: "搜索地点" }));
+    await user.click(await within(dialog).findByRole("button", { name: "选择地点 上海浦东国际机场" }));
+    await user.click(within(dialog).getByRole("button", { name: "保存节点" }));
+
+    const stops = (await db.stops.toArray()).filter((stop) => stop.city === "上海");
+    expect(stops).toHaveLength(2);
+    expect(stops.map((stop) => stop.title)).toEqual(expect.arrayContaining(["外滩", "上海浦东国际机场"]));
+    expect(new Set(stops.map((stop) => `${stop.latitude},${stop.longitude}`)).size).toBe(2);
+    expect(stops.every((stop) => Boolean(stop.address))).toBe(true);
   });
 
   it("opens trip editing and deletion as a single top-level dialog", async () => {

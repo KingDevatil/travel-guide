@@ -30,6 +30,7 @@ export const stopSchema = z.object({
   title: z.string().min(1, "stop title must not be empty"),
   country: z.string().optional(),
   city: z.string().optional(),
+  address: z.string().optional(),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
   startsAt: z.string().regex(isoDatetimePattern, "startsAt must be ISO 8601 datetime").optional(),

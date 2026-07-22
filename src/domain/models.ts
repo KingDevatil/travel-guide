@@ -32,6 +32,7 @@ export interface Stop {
   title: string;
   country?: string;
   city?: string;
+  address?: string;
   latitude: number;
   longitude: number;
   startsAt?: string;
