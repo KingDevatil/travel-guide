@@ -5,7 +5,7 @@ import App from "../src/App";
 import { db } from "../src/db/travel-db";
 
 describe("App", () => {
-  beforeEach(async () => { await db.delete(); await db.open(); });
+  beforeEach(async () => { localStorage.clear(); await db.delete(); await db.open(); });
 
   it("renders the selected persisted trip", async () => {
     render(<App />);
@@ -72,5 +72,23 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "删除" }));
     expect(screen.getByRole("dialog", { name: "删除行程？" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "我的行程" })).not.toBeInTheDocument();
+  });
+
+  it("edits and applies a reusable packing template", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "行李" }));
+    await user.click(screen.getByRole("button", { name: "管理模板" }));
+    const manager = screen.getByRole("dialog", { name: "管理行李模板" });
+    await user.click(within(manager).getByRole("button", { name: "编辑 海外旅行" }));
+    await user.clear(within(manager).getByLabelText("模板名称"));
+    await user.type(within(manager).getByLabelText("模板名称"), "日本自由行");
+    await user.clear(within(manager).getByLabelText("模板物品（每行一项）"));
+    await user.type(within(manager).getByLabelText("模板物品（每行一项）"), "护照\n交通卡\n充电宝");
+    await user.click(within(manager).getByRole("button", { name: "保存模板" }));
+    await user.click(within(manager).getByRole("button", { name: "关闭模板管理" }));
+    await user.click(screen.getByRole("button", { name: "日本自由行模板" }));
+    expect(await screen.findByText("交通卡 × 1")).toBeInTheDocument();
+    expect(localStorage.getItem("travel-planner:packing-templates:v1")).toContain("日本自由行");
   });
 });
