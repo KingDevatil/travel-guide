@@ -116,6 +116,36 @@ describe("App", () => {
     expect(stops.every((stop) => Boolean(stop.address))).toBe(true);
   });
 
+  it("uses a node's local timezone and can fall back to the trip timezone", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "添加节点" }));
+    let dialog = screen.getByRole("dialog", { name: "添加节点" });
+    expect(within(dialog).getByLabelText("使用节点当地时间")).toBeChecked();
+    expect(within(dialog).getByLabelText("节点时区")).toHaveValue("Asia/Tokyo");
+
+    await user.type(within(dialog).getByLabelText("所在城市"), "曼谷");
+    await user.click(within(dialog).getByRole("button", { name: "选择 曼谷，泰国" }));
+    expect(within(dialog).getByLabelText("节点时区")).toHaveValue("Asia/Bangkok");
+    expect(within(dialog).getByText("Asia/Bangkok（UTC+07:00）")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "保存节点" }));
+
+    let stop = (await db.stops.toArray())[0];
+    expect(stop).toMatchObject({ city: "曼谷", timezone: "Asia/Bangkok", startsAt: "2025-10-12T09:00" });
+    expect(await screen.findByText(/当地时间 Asia\/Bangkok/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    dialog = screen.getByRole("dialog", { name: "编辑节点" });
+    await user.click(within(dialog).getByLabelText("使用节点当地时间"));
+    expect(within(dialog).queryByLabelText("节点时区")).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "保存节点" }));
+
+    stop = (await db.stops.toArray())[0];
+    expect(stop.timezone).toBeUndefined();
+    expect(await screen.findByText("09:00—10:00 · 行程时区 Asia/Tokyo")).toBeInTheDocument();
+  });
+
   it("finds Suvarnabhumi Airport with its common Chinese name in Bangkok", async () => {
     const user = userEvent.setup();
     render(<App />);

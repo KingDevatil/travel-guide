@@ -44,6 +44,38 @@ export const cityCatalog: CityOption[] = [
   { name: "伊斯坦布尔", country: "土耳其", latitude: 41.0082, longitude: 28.9784, aliases: ["istanbul"] },
 ];
 
+const cityTimezoneGroups: Array<[timezone: string, cities: string[]]> = [
+  ["Asia/Tokyo", ["京都", "大阪", "东京", "奈良", "神户", "札幌", "福冈"]],
+  ["Asia/Shanghai", ["北京", "上海", "广州", "深圳", "成都", "杭州", "西安"]],
+  ["Asia/Hong_Kong", ["香港"]],
+  ["Asia/Macau", ["澳门"]],
+  ["Asia/Taipei", ["台北"]],
+  ["Asia/Seoul", ["首尔"]],
+  ["Asia/Singapore", ["新加坡"]],
+  ["Asia/Bangkok", ["曼谷", "清迈"]],
+  ["Asia/Makassar", ["巴厘岛"]],
+  ["Europe/Paris", ["巴黎"]],
+  ["Europe/London", ["伦敦"]],
+  ["Europe/Rome", ["罗马"]],
+  ["Europe/Madrid", ["巴塞罗那"]],
+  ["America/New_York", ["纽约"]],
+  ["America/Los_Angeles", ["洛杉矶", "旧金山"]],
+  ["Australia/Sydney", ["悉尼"]],
+  ["Australia/Melbourne", ["墨尔本"]],
+  ["America/Vancouver", ["温哥华"]],
+  ["America/Toronto", ["多伦多"]],
+  ["Asia/Dubai", ["迪拜"]],
+  ["Europe/Istanbul", ["伊斯坦布尔"]],
+];
+
+const cityTimezoneLookup = Object.fromEntries(cityTimezoneGroups.flatMap(([timezone, cities]) => cities.map((city) => [city, timezone])));
+
+export const supportedCityTimezones = cityTimezoneGroups.map(([timezone]) => timezone);
+
+export function timezoneForCity(city: string): string | undefined {
+  return cityTimezoneLookup[city];
+}
+
 const normalize = (value: string) => value.trim().toLocaleLowerCase().replace(/[\s'’.-]/g, "");
 
 export function searchCityCatalog(query: string, limit = 6): CityOption[] {

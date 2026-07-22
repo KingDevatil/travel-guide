@@ -161,12 +161,21 @@ describe("stopSchema", () => {
       ...validStop,
       country: "JP",
       city: "Osaka",
-      startsAt: "2024-10-12T09:40:00+09:00",
-      endsAt: "2024-10-12T11:00:00+09:00",
+      startsAt: "2024-10-12T09:40",
+      endsAt: "2024-10-12T11:00",
+      timezone: "Asia/Tokyo",
       content: "Arrive at KIX",
       notes: "Pick up JR Pass",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("keeps accepting legacy scheduled datetimes with an explicit offset", () => {
+    expect(stopSchema.safeParse({ ...validStop, startsAt: "2024-10-12T09:40:00+09:00" }).success).toBe(true);
+  });
+
+  it("rejects an empty node timezone", () => {
+    expect(stopSchema.safeParse({ ...validStop, timezone: "" }).success).toBe(false);
   });
 
   it("rejects latitude below -90", () => {

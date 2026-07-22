@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 const isoDatetimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+const scheduledDatetimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
 
 const idSchema = z.string().min(1, "id must not be empty");
 
@@ -33,8 +34,9 @@ export const stopSchema = z.object({
   address: z.string().optional(),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
-  startsAt: z.string().regex(isoDatetimePattern, "startsAt must be ISO 8601 datetime").optional(),
-  endsAt: z.string().regex(isoDatetimePattern, "endsAt must be ISO 8601 datetime").optional(),
+  startsAt: z.string().regex(scheduledDatetimePattern, "startsAt must be a scheduled datetime").optional(),
+  endsAt: z.string().regex(scheduledDatetimePattern, "endsAt must be a scheduled datetime").optional(),
+  timezone: z.string().min(1, "timezone must not be empty").optional(),
   content: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -56,8 +58,8 @@ export const legSchema = z.object({
   fromStopId: idSchema,
   toStopId: idSchema,
   mode: transportModeSchema,
-  departsAt: z.string().regex(isoDatetimePattern, "departsAt must be ISO 8601 datetime").optional(),
-  arrivesAt: z.string().regex(isoDatetimePattern, "arrivesAt must be ISO 8601 datetime").optional(),
+  departsAt: z.string().regex(scheduledDatetimePattern, "departsAt must be a scheduled datetime").optional(),
+  arrivesAt: z.string().regex(scheduledDatetimePattern, "arrivesAt must be a scheduled datetime").optional(),
   serviceNumber: z.string().optional(),
   notes: z.string().optional(),
   routeGeoJson: lineStringSchema.optional(),

@@ -1,7 +1,8 @@
 import { Building2, MapPin, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Stop } from "../../domain/models";
-import { searchCityCatalog, type CityOption } from "../../data/cities";
+import { searchCityCatalog, supportedCityTimezones, timezoneForCity, type CityOption } from "../../data/cities";
+import { formatTimezoneLabel, isValidTimezone, toDateTimeLocalValue } from "../../domain/timezones";
 import type { StopDraft } from "../../hooks/useItinerary";
 import { searchPlaces, type PlaceSearchResult } from "../../services/place-search";
 
@@ -10,15 +11,17 @@ interface StopEditorProps {
   date: string;
   tripStartDate: string;
   tripEndDate: string;
+  tripTimezone: string;
   initialCoordinates?: { latitude: number; longitude: number };
   existingStops?: Stop[];
   onSave: (draft: StopDraft) => Promise<void>;
   onClose: () => void;
 }
 
-export function StopEditor({ stop, date, tripStartDate, tripEndDate, initialCoordinates, existingStops = [], onSave, onClose }: StopEditorProps) {
+export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezone, initialCoordinates, existingStops = [], onSave, onClose }: StopEditorProps) {
   const initialDate = stop?.date ?? date;
-  const [draft, setDraft] = useState<StopDraft>({ date: initialDate, title: stop?.title ?? "", country: stop?.country ?? "", city: stop?.city ?? "", address: stop?.address ?? "", latitude: stop?.latitude ?? initialCoordinates?.latitude ?? 0, longitude: stop?.longitude ?? initialCoordinates?.longitude ?? 0, startsAt: stop?.startsAt ?? `${initialDate}T09:00`, endsAt: stop?.endsAt ?? `${initialDate}T10:00`, content: stop?.content ?? "", notes: stop?.notes ?? "" });
+  const [draft, setDraft] = useState<StopDraft>({ date: initialDate, title: stop?.title ?? "", country: stop?.country ?? "", city: stop?.city ?? "", address: stop?.address ?? "", latitude: stop?.latitude ?? initialCoordinates?.latitude ?? 0, longitude: stop?.longitude ?? initialCoordinates?.longitude ?? 0, startsAt: stop?.startsAt ? toDateTimeLocalValue(stop.startsAt) : `${initialDate}T09:00`, endsAt: stop?.endsAt ? toDateTimeLocalValue(stop.endsAt) : `${initialDate}T10:00`, timezone: stop?.timezone ?? tripTimezone, content: stop?.content ?? "", notes: stop?.notes ?? "" });
+  const [useLocalTime, setUseLocalTime] = useState(stop ? Boolean(stop.timezone) : true);
   const [cityQuery, setCityQuery] = useState(stop?.city ?? "");
   const [placeQuery, setPlaceQuery] = useState(stop?.address ? stop.title : "");
   const [placeResults, setPlaceResults] = useState<PlaceSearchResult[]>([]);
@@ -29,6 +32,7 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, initialCoor
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [error, setError] = useState("");
   const suggestions = useMemo(() => locationResolved ? [] : searchCityCatalog(cityQuery), [cityQuery, locationResolved]);
+  const timezoneOptions = useMemo(() => Array.from(new Set([tripTimezone, draft.timezone, ...supportedCityTimezones].filter((value): value is string => Boolean(value)))), [draft.timezone, tripTimezone]);
   const update = <K extends keyof StopDraft>(key: K, value: StopDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const updateDate = (nextDate: string) => setDraft((current) => nextDate ? ({
     ...current,
@@ -42,7 +46,7 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, initialCoor
     setLocationResolved(true);
     setError("");
     setPlaceQuery(""); setPlaceResults([]); setPlaceResolved(false); setPlaceSearchAttempted(false);
-    setDraft((current) => ({ ...current, title: current.title.trim() && current.title !== current.city ? current.title : city.name, country: city.country, city: city.name, address: "", latitude: city.latitude, longitude: city.longitude }));
+    setDraft((current) => ({ ...current, title: current.title.trim() && current.title !== current.city ? current.title : city.name, country: city.country, city: city.name, address: "", latitude: city.latitude, longitude: city.longitude, timezone: useLocalTime ? timezoneForCity(city.name) ?? current.timezone ?? tripTimezone : undefined }));
   };
 
   const findPlaces = async () => {
@@ -65,7 +69,7 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, initialCoor
     setPlaceResolved(Boolean(source.address));
     setPlaceSearchAttempted(false);
     setLocationResolved(true);
-    setDraft((current) => ({ ...current, title: source.title, country: source.country ?? "", city: source.city ?? source.title, address: source.address ?? "", latitude: source.latitude, longitude: source.longitude }));
+    setDraft((current) => ({ ...current, title: source.title, country: source.country ?? "", city: source.city ?? source.title, address: source.address ?? "", latitude: source.latitude, longitude: source.longitude, timezone: useLocalTime ? source.timezone ?? timezoneForCity(source.city ?? "") ?? current.timezone ?? tripTimezone : undefined }));
   };
 
   const updateCoordinate = (key: "latitude" | "longitude", value: number) => {
@@ -79,7 +83,9 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, initialCoor
       event.preventDefault();
       if (!locationResolved) { setError("请先从搜索结果选择城市，或前往地图页点选位置。"); return; }
       if (placeQuery.trim() && !placeResolved) { setError("请点击“搜索地点”并选择具体地点；如果只规划城市，可清空具体地点。"); return; }
-      try { await onSave(draft); onClose(); } catch (reason) { setError(reason instanceof Error ? reason.message : "保存失败"); }
+      const timezone = useLocalTime ? draft.timezone || tripTimezone : undefined;
+      if (timezone && !isValidTimezone(timezone)) { setError("请输入有效的 IANA 时区，例如 Asia/Bangkok。"); return; }
+      try { await onSave({ ...draft, timezone }); onClose(); } catch (reason) { setError(reason instanceof Error ? reason.message : "保存失败"); }
     }}>
       <div className="dialog-header dialog-wide"><div><h2 id="stop-editor-title" className="dialog-title">{stop ? "编辑节点" : "添加节点"}</h2><p>先选择城市，再定位景点、酒店、机场等具体地点。</p></div><button type="button" className="dialog-close-btn" onClick={onClose} aria-label="关闭节点编辑"><X aria-hidden="true" /></button></div>
       <div className="dialog-field dialog-wide city-search-field">
@@ -95,6 +101,11 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, initialCoor
       {existingStops.some((item) => item.id !== stop?.id) && <label className="dialog-field dialog-wide">使用已有节点位置<select className="dialog-input" defaultValue="" onChange={(event) => { const source = existingStops.find((item) => item.id === event.target.value); if (source) copyLocation(source); }}><option value="">选择已有节点</option>{existingStops.filter((item) => item.id !== stop?.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>}
       <label className="dialog-field">开始时间<input className="dialog-input" type="datetime-local" min={`${tripStartDate}T00:00`} max={`${tripEndDate}T23:59`} value={draft.startsAt} onChange={(event) => update("startsAt", event.target.value)} /></label>
       <label className="dialog-field">结束时间<input className="dialog-input" type="datetime-local" min={`${tripStartDate}T00:00`} max={`${tripEndDate}T23:59`} value={draft.endsAt} onChange={(event) => update("endsAt", event.target.value)} /></label>
+      <div className="dialog-field dialog-wide stop-timezone-settings">
+        <label className="stop-timezone-toggle"><input type="checkbox" checked={useLocalTime} onChange={(event) => { const enabled = event.target.checked; setUseLocalTime(enabled); setDraft((current) => ({ ...current, timezone: enabled ? timezoneForCity(current.city ?? "") ?? current.timezone ?? tripTimezone : undefined })); }} />使用节点当地时间</label>
+        <p className="field-hint">开启后，开始和结束时间按节点所在地解释；关闭后使用行程时区 {tripTimezone}。</p>
+        {useLocalTime && <div className="stop-timezone-control"><label htmlFor="stop-timezone">节点时区</label><input id="stop-timezone" className="dialog-input" list="stop-timezone-options" value={draft.timezone ?? ""} onChange={(event) => update("timezone", event.target.value)} /><datalist id="stop-timezone-options">{timezoneOptions.map((timezone) => <option key={timezone} value={timezone} />)}</datalist><span className="timezone-summary">{formatTimezoneLabel(draft.timezone || tripTimezone, draft.date)}</span></div>}
+      </div>
       <label className="dialog-field dialog-wide">安排内容<textarea className="dialog-input dialog-textarea" value={draft.content} onChange={(event) => update("content", event.target.value)} placeholder="景点、餐厅、入住信息等" /></label>
       <label className="dialog-field dialog-wide">备注<textarea className="dialog-input dialog-textarea" value={draft.notes} onChange={(event) => update("notes", event.target.value)} /></label>
       <div className="dialog-wide coordinate-settings"><button type="button" onClick={() => setShowCoordinates((value) => !value)} aria-expanded={showCoordinates}>{showCoordinates ? "收起精确位置" : "调整精确位置（可选）"}</button>{showCoordinates && <div className="coordinate-grid"><label className="dialog-field">纬度（WGS84）<input className="dialog-input" required type="number" min="-90" max="90" step="any" value={draft.latitude} onChange={(event) => updateCoordinate("latitude", Number(event.target.value))} /></label><label className="dialog-field">经度（WGS84）<input className="dialog-input" required type="number" min="-180" max="180" step="any" value={draft.longitude} onChange={(event) => updateCoordinate("longitude", Number(event.target.value))} /></label></div>}</div>

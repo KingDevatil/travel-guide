@@ -37,6 +37,7 @@ export interface Stop {
   longitude: number;
   startsAt?: string;
   endsAt?: string;
+  timezone?: string;
   content?: string;
   notes?: string;
 }

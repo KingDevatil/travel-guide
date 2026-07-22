@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { searchCityCatalog } from "../../src/data/cities";
+import { searchCityCatalog, timezoneForCity } from "../../src/data/cities";
 
 describe("city catalog search", () => {
   it("matches Chinese and English destination names with coordinates", () => {
@@ -11,5 +11,12 @@ describe("city catalog search", () => {
   it("returns no suggestions for blank or unknown input", () => {
     expect(searchCityCatalog(" ")).toEqual([]);
     expect(searchCityCatalog("不存在的城市")).toEqual([]);
+  });
+
+  it("maps destinations to their local IANA timezones", () => {
+    expect(timezoneForCity("东京")).toBe("Asia/Tokyo");
+    expect(timezoneForCity("曼谷")).toBe("Asia/Bangkok");
+    expect(timezoneForCity("巴黎")).toBe("Europe/Paris");
+    expect(timezoneForCity("纽约")).toBe("America/New_York");
   });
 });
