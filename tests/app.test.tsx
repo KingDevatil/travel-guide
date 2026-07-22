@@ -103,6 +103,26 @@ describe("App", () => {
     expect(screen.queryByRole("dialog", { name: "我的行程" })).not.toBeInTheDocument();
   });
 
+  it("deletes the last trip without recreating the starter trip", async () => {
+    const user = userEvent.setup();
+    const firstRender = render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "管理行程" }));
+    await user.click(screen.getByRole("button", { name: "删除" }));
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    expect(await screen.findByRole("heading", { name: "还没有行程" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建行程" })).toBeInTheDocument();
+    expect(screen.queryByText("日本关西 6 日")).not.toBeInTheDocument();
+    expect(await db.trips.count()).toBe(0);
+
+    firstRender.unmount();
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "还没有行程" })).toBeInTheDocument();
+    expect(screen.queryByText("日本关西 6 日")).not.toBeInTheDocument();
+    expect(await db.trips.count()).toBe(0);
+  });
+
   it("edits and applies a reusable packing template", async () => {
     const user = userEvent.setup();
     render(<App />);

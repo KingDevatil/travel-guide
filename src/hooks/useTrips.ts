@@ -19,6 +19,7 @@ const starterTrip: TripDraft = {
   timezone: "Asia/Tokyo",
   defaultCurrency: "JPY",
 };
+const starterInitializedKey = "travel-planner:starter-initialized:v1";
 
 function makeTrip(draft: TripDraft): Trip {
   const now = new Date().toISOString();
@@ -36,7 +37,7 @@ export function useTrips() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const starterPromise = useRef<Promise<Trip> | undefined>(undefined);
+  const starterPromise = useRef<Promise<Trip | undefined> | undefined>(undefined);
 
   const refresh = useCallback(async () => {
     try {
@@ -61,8 +62,14 @@ export function useTrips() {
   const ensureStarter = useCallback(async () => {
     if (!starterPromise.current) starterPromise.current = (async () => {
       const existing = await listTrips();
-      if (existing.length) return existing[0];
-      return add(starterTrip);
+      if (existing.length) {
+        localStorage.setItem(starterInitializedKey, "true");
+        return existing[0];
+      }
+      if (localStorage.getItem(starterInitializedKey)) return undefined;
+      const trip = await add(starterTrip);
+      localStorage.setItem(starterInitializedKey, "true");
+      return trip;
     })();
     const pending = starterPromise.current;
     try { return await pending; }

@@ -14,13 +14,17 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewMode>("itinerary");
   const { trips, loading, error, add, save, duplicate, archive, restore, remove, ensureStarter, refresh } = useTrips();
   const [activeTripId, setActiveTripId] = useState<string>();
+  const [starterReady, setStarterReady] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [editorTrip, setEditorTrip] = useState<Trip | null | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<Trip>();
   const managerButtonRef = useRef<HTMLButtonElement>(null);
   const managerPanelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { if (!loading && !activeTripId) void ensureStarter().then((trip) => setActiveTripId(trip.id)); }, [activeTripId, ensureStarter, loading]);
+  useEffect(() => {
+    if (loading || starterReady) return;
+    void ensureStarter().then((trip) => { if (trip) setActiveTripId(trip.id); }).finally(() => setStarterReady(true));
+  }, [ensureStarter, loading, starterReady]);
   useEffect(() => { if (!managerOpen) return; const panel = managerPanelRef.current; requestAnimationFrame(() => panel?.querySelector<HTMLElement>("button")?.focus()); const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setManagerOpen(false); managerButtonRef.current?.focus(); return; } if (event.key === "Tab" && panel) { const focusable = [...panel.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])')]; if (!focusable.length) return; const first = focusable[0]; const last = focusable[focusable.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } }; document.addEventListener("keydown", close); return () => document.removeEventListener("keydown", close); }, [managerOpen]);
   const currentTrip = trips.find((trip) => trip.id === activeTripId) ?? trips.find((trip) => !trip.archivedAt);
 
@@ -32,7 +36,12 @@ export default function App() {
   const openTripEditor = (trip: Trip | null) => { setManagerOpen(false); setEditorTrip(trip); };
   const openDeleteConfirmation = (trip: Trip) => { setManagerOpen(false); setPendingDelete(trip); };
 
-  if (loading || !currentTrip) return <main className="app-loading"><h1>旅程册</h1><p>正在读取本机行程…</p></main>;
+  if (loading || !starterReady) return <main className="app-loading"><h1>旅程册</h1><p>正在读取本机行程…</p></main>;
+
+  if (!currentTrip) return <>
+    <main className="app-loading app-empty"><h1>旅程册</h1><h2>还没有行程</h2><p>已删除所有行程。你可以从一个新的旅行计划重新开始。</p><button onClick={() => setEditorTrip(null)}>新建行程</button></main>
+    {editorTrip !== undefined && <TripEditor trip={editorTrip ?? undefined} onSave={saveTrip} onClose={() => setEditorTrip(undefined)} />}
+  </>;
 
   return <>
     {error && <div className="app-error" role="alert">{error}</div>}
