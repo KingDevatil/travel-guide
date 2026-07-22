@@ -8,14 +8,17 @@ import { searchPlaces, type PlaceSearchResult } from "../../services/place-searc
 interface StopEditorProps {
   stop?: Stop;
   date: string;
+  tripStartDate: string;
+  tripEndDate: string;
   initialCoordinates?: { latitude: number; longitude: number };
   existingStops?: Stop[];
   onSave: (draft: StopDraft) => Promise<void>;
   onClose: () => void;
 }
 
-export function StopEditor({ stop, date, initialCoordinates, existingStops = [], onSave, onClose }: StopEditorProps) {
-  const [draft, setDraft] = useState<StopDraft>({ date: stop?.date ?? date, title: stop?.title ?? "", country: stop?.country ?? "", city: stop?.city ?? "", address: stop?.address ?? "", latitude: stop?.latitude ?? initialCoordinates?.latitude ?? 0, longitude: stop?.longitude ?? initialCoordinates?.longitude ?? 0, startsAt: stop?.startsAt ?? "", endsAt: stop?.endsAt ?? "", content: stop?.content ?? "", notes: stop?.notes ?? "" });
+export function StopEditor({ stop, date, tripStartDate, tripEndDate, initialCoordinates, existingStops = [], onSave, onClose }: StopEditorProps) {
+  const initialDate = stop?.date ?? date;
+  const [draft, setDraft] = useState<StopDraft>({ date: initialDate, title: stop?.title ?? "", country: stop?.country ?? "", city: stop?.city ?? "", address: stop?.address ?? "", latitude: stop?.latitude ?? initialCoordinates?.latitude ?? 0, longitude: stop?.longitude ?? initialCoordinates?.longitude ?? 0, startsAt: stop?.startsAt ?? `${initialDate}T09:00`, endsAt: stop?.endsAt ?? `${initialDate}T10:00`, content: stop?.content ?? "", notes: stop?.notes ?? "" });
   const [cityQuery, setCityQuery] = useState(stop?.city ?? "");
   const [placeQuery, setPlaceQuery] = useState(stop?.address ? stop.title : "");
   const [placeResults, setPlaceResults] = useState<PlaceSearchResult[]>([]);
@@ -27,6 +30,12 @@ export function StopEditor({ stop, date, initialCoordinates, existingStops = [],
   const [error, setError] = useState("");
   const suggestions = useMemo(() => locationResolved ? [] : searchCityCatalog(cityQuery), [cityQuery, locationResolved]);
   const update = <K extends keyof StopDraft>(key: K, value: StopDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
+  const updateDate = (nextDate: string) => setDraft((current) => nextDate ? ({
+    ...current,
+    date: nextDate,
+    startsAt: current.startsAt ? `${nextDate}${current.startsAt.slice(10)}` : `${nextDate}T09:00`,
+    endsAt: current.endsAt ? `${nextDate}${current.endsAt.slice(10)}` : `${nextDate}T10:00`,
+  }) : ({ ...current, date: "", startsAt: "", endsAt: "" }));
 
   const selectCity = (city: CityOption) => {
     setCityQuery(city.name);
@@ -82,10 +91,10 @@ export function StopEditor({ stop, date, initialCoordinates, existingStops = [],
       </div>
       {locationResolved && draft.city && <div className="dialog-field dialog-wide place-search-field"><label htmlFor="stop-place-search">具体地点或地址（可选）</label><div className="place-search-input"><input id="stop-place-search" className="dialog-input" placeholder={`例如：${draft.city}外滩、酒店、机场`} value={placeQuery} onChange={(event) => { setPlaceQuery(event.target.value); setPlaceResolved(false); setPlaceResults([]); setPlaceSearchAttempted(false); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void findPlaces(); } }} /><button type="button" onClick={() => void findPlaces()} disabled={!placeQuery.trim() || searchingPlace}><Search aria-hidden="true" />{searchingPlace ? "搜索中…" : "搜索地点"}</button></div>{placeResults.length > 0 && <div className="place-search-results" aria-label="具体地点搜索结果">{placeResults.map((place) => <button type="button" key={place.id} aria-label={`选择地点 ${place.name}`} onClick={() => selectPlace(place)}><Building2 aria-hidden="true" /><span><strong>{place.name}</strong><small>{place.address}</small></span></button>)}</div>}{placeQuery.trim() && !placeResolved && !searchingPlace && placeResults.length === 0 && <p className="field-hint">{placeSearchAttempted ? "没有找到匹配地点，请补充区县或道路名称后重试。" : "输入地点后点击“搜索地点”，从结果中选择以保存精确位置。"}</p>}{placeResolved && <p className="location-confirmed"><MapPin aria-hidden="true" />已定位具体地点：{draft.title}<small>{draft.address}</small></p>}<p className="place-attribution">地点搜索由 OpenStreetMap Nominatim 提供</p></div>}
       <label className="dialog-field">节点标题<input className="dialog-input" required value={draft.title} onChange={(event) => update("title", event.target.value)} placeholder="例如：京都站、酒店入住" /></label>
-      <label className="dialog-field">日期<input className="dialog-input" required type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} /></label>
+      <label className="dialog-field">日期<input className="dialog-input" required type="date" min={tripStartDate} max={tripEndDate} value={draft.date} onChange={(event) => updateDate(event.target.value)} /></label>
       {existingStops.some((item) => item.id !== stop?.id) && <label className="dialog-field dialog-wide">使用已有节点位置<select className="dialog-input" defaultValue="" onChange={(event) => { const source = existingStops.find((item) => item.id === event.target.value); if (source) copyLocation(source); }}><option value="">选择已有节点</option>{existingStops.filter((item) => item.id !== stop?.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>}
-      <label className="dialog-field">开始时间<input className="dialog-input" type="datetime-local" value={draft.startsAt} onChange={(event) => update("startsAt", event.target.value)} /></label>
-      <label className="dialog-field">结束时间<input className="dialog-input" type="datetime-local" value={draft.endsAt} onChange={(event) => update("endsAt", event.target.value)} /></label>
+      <label className="dialog-field">开始时间<input className="dialog-input" type="datetime-local" min={`${tripStartDate}T00:00`} max={`${tripEndDate}T23:59`} value={draft.startsAt} onChange={(event) => update("startsAt", event.target.value)} /></label>
+      <label className="dialog-field">结束时间<input className="dialog-input" type="datetime-local" min={`${tripStartDate}T00:00`} max={`${tripEndDate}T23:59`} value={draft.endsAt} onChange={(event) => update("endsAt", event.target.value)} /></label>
       <label className="dialog-field dialog-wide">安排内容<textarea className="dialog-input dialog-textarea" value={draft.content} onChange={(event) => update("content", event.target.value)} placeholder="景点、餐厅、入住信息等" /></label>
       <label className="dialog-field dialog-wide">备注<textarea className="dialog-input dialog-textarea" value={draft.notes} onChange={(event) => update("notes", event.target.value)} /></label>
       <div className="dialog-wide coordinate-settings"><button type="button" onClick={() => setShowCoordinates((value) => !value)} aria-expanded={showCoordinates}>{showCoordinates ? "收起精确位置" : "调整精确位置（可选）"}</button>{showCoordinates && <div className="coordinate-grid"><label className="dialog-field">纬度（WGS84）<input className="dialog-input" required type="number" min="-90" max="90" step="any" value={draft.latitude} onChange={(event) => updateCoordinate("latitude", Number(event.target.value))} /></label><label className="dialog-field">经度（WGS84）<input className="dialog-input" required type="number" min="-180" max="180" step="any" value={draft.longitude} onChange={(event) => updateCoordinate("longitude", Number(event.target.value))} /></label></div>}</div>

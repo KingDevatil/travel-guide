@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../src/App";
 import { db } from "../src/db/travel-db";
@@ -54,6 +54,18 @@ describe("App", () => {
     await user.click(await screen.findByRole("button", { name: "添加节点" }));
     const dialog = screen.getByRole("dialog", { name: "添加节点" });
     expect(within(dialog).queryByLabelText("纬度（WGS84）")).not.toBeInTheDocument();
+    const stopDate = within(dialog).getByLabelText("日期");
+    const startsAt = within(dialog).getByLabelText("开始时间");
+    const endsAt = within(dialog).getByLabelText("结束时间");
+    expect(stopDate).toHaveAttribute("min", "2025-10-12");
+    expect(stopDate).toHaveAttribute("max", "2025-10-17");
+    expect(startsAt).toHaveValue("2025-10-12T09:00");
+    expect(endsAt).toHaveValue("2025-10-12T10:00");
+    expect(startsAt).toHaveAttribute("min", "2025-10-12T00:00");
+    expect(endsAt).toHaveAttribute("max", "2025-10-17T23:59");
+    fireEvent.change(stopDate, { target: { value: "2025-10-14" } });
+    expect(startsAt).toHaveValue("2025-10-14T09:00");
+    expect(endsAt).toHaveValue("2025-10-14T10:00");
     await user.type(within(dialog).getByLabelText("所在城市"), "京都");
     await user.click(await within(dialog).findByRole("button", { name: "选择 京都，日本" }));
     await user.click(within(dialog).getByRole("button", { name: "保存节点" }));
