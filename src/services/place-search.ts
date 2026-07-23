@@ -20,6 +20,7 @@ interface SearchPlacesInput {
   query: string;
   city: string;
   country?: string;
+  cityCoordinates?: { latitude: number; longitude: number };
 }
 
 const knownPlaces: Array<PlaceSearchResult & { city: string; aliases: string[] }> = [
@@ -85,16 +86,17 @@ export function buildPlaceSearchParams(input: SearchPlacesInput): URLSearchParam
   const countryCode = cityCountryCodeOverrides[input.city] ?? (input.country ? countryCodes[input.country] : undefined);
   if (countryCode) params.set("countrycodes", countryCode);
 
-  if (city) {
+  const coordinates = city ?? input.cityCoordinates;
+  if (coordinates) {
     const longitudeRadius = 1.5;
     const latitudeRadius = 1.5;
     params.set("viewbox", [
-      city.longitude - longitudeRadius,
-      city.latitude + latitudeRadius,
-      city.longitude + longitudeRadius,
-      city.latitude - latitudeRadius,
+      coordinates.longitude - longitudeRadius,
+      coordinates.latitude + latitudeRadius,
+      coordinates.longitude + longitudeRadius,
+      coordinates.latitude - latitudeRadius,
     ].map((coordinate) => coordinate.toFixed(4)).join(","));
-    params.set("bounded", "0");
+    params.set("bounded", "1");
   }
 
   return params;
@@ -149,13 +151,16 @@ export async function searchPlaces(input: SearchPlacesInput, fetcher: typeof fet
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
-  await waitForRemoteSearchSlot();
-
-  const params = buildPlaceSearchParams(input);
-  const response = await fetcher(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error("地点搜索服务暂时不可用");
-  const payload = await response.json() as Array<{ place_id: number; name?: string; display_name: string; lat: string; lon: string }>;
-  const results = payload.map((place) => ({ id: String(place.place_id), name: place.name?.trim() || place.display_name.split(",")[0].trim(), address: place.display_name, latitude: Number(place.lat), longitude: Number(place.lon) })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
+  const searchRemote = async (query: string) => {
+    await waitForRemoteSearchSlot();
+    const params = buildPlaceSearchParams({ ...input, query });
+    const response = await fetcher(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error("地点搜索服务暂时不可用");
+    const payload = await response.json() as Array<{ place_id: number; name?: string; display_name: string; lat: string; lon: string }>;
+    return payload.map((place) => ({ id: String(place.place_id), name: place.name?.trim() || place.display_name.split(",")[0].trim(), address: place.display_name, latitude: Number(place.lat), longitude: Number(place.lon) })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
+  };
+  let results = await searchRemote(input.query);
+  if (results.length === 0 && /机场|airport/i.test(input.query)) results = await searchRemote("airport");
   cache.set(cacheKey, results);
   return results;
 }

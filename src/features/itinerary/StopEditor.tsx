@@ -74,7 +74,7 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezon
   const findPlaces = async () => {
     if (!draft.city || !placeQuery.trim()) return;
     setSearchingPlace(true); setPlaceSearchAttempted(false); setError("");
-    try { setPlaceResults(await searchPlaces({ query: placeQuery, city: draft.city, country: draft.country })); setPlaceSearchAttempted(true); }
+    try { setPlaceResults(await searchPlaces({ query: placeQuery, city: draft.city, country: draft.country, cityCoordinates: { latitude: draft.latitude, longitude: draft.longitude } })); setPlaceSearchAttempted(true); }
     catch (reason) { setPlaceResults([]); setError(reason instanceof Error ? `${reason.message}，可展开“调整精确位置”手动设置。` : "地点搜索失败"); }
     finally { setSearchingPlace(false); }
   };
