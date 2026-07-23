@@ -6,9 +6,14 @@ import { itineraryGeoJson } from "./geojson";
 import { mapStyle } from "./map-style";
 import { mapViewportForStops } from "./viewport";
 
-interface TripMapProps { stops: Stop[]; legs: Leg[]; day?: string; onSelectStop?: (id: string) => void; onPickCoordinates?: (coordinates: { latitude: number; longitude: number }) => void; }
+interface TripMapProps { stops: Stop[]; legs: Leg[]; day?: string; selectedStopId?: string; onSelectStop?: (id: string) => void; onPickCoordinates?: (coordinates: { latitude: number; longitude: number }) => void; }
 
-function focusMap(map: maplibregl.Map, stops: Stop[], day?: string) {
+function focusMap(map: maplibregl.Map, stops: Stop[], day?: string, selectedStopId?: string) {
+  const selectedStop = selectedStopId ? stops.find((stop) => stop.id === selectedStopId) : undefined;
+  if (selectedStop && Number.isFinite(selectedStop.longitude) && Number.isFinite(selectedStop.latitude)) {
+    map.easeTo({ center: [selectedStop.longitude, selectedStop.latitude], zoom: 15 });
+    return;
+  }
   const viewport = mapViewportForStops(stops, day);
   if (!viewport) return;
   if (viewport.type === "center") {
@@ -18,14 +23,14 @@ function focusMap(map: maplibregl.Map, stops: Stop[], day?: string) {
   map.fitBounds(viewport.bounds, { padding: 64, maxZoom: viewport.maxZoom });
 }
 
-export function TripMap({ stops, legs, day, onSelectStop, onPickCoordinates }: TripMapProps) {
+export function TripMap({ stops, legs, day, selectedStopId, onSelectStop, onPickCoordinates }: TripMapProps) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const dataRef = useRef({ stops, legs, day });
+  const dataRef = useRef({ stops, legs, day, selectedStopId });
   const onSelectStopRef = useRef(onSelectStop);
   const onPickCoordinatesRef = useRef(onPickCoordinates);
   const [failed, setFailed] = useState(false);
-  dataRef.current = { stops, legs, day };
+  dataRef.current = { stops, legs, day, selectedStopId };
   onSelectStopRef.current = onSelectStop;
   onPickCoordinatesRef.current = onPickCoordinates;
 
@@ -47,7 +52,7 @@ export function TripMap({ stops, legs, day, onSelectStop, onPickCoordinates }: T
       map.addLayer({ id: "stops", type: "circle", source: "itinerary", filter: ["==", "$type", "Point"], paint: { "circle-color": "#ff5a36", "circle-radius": 7, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
       map.on("click", "stops", (event) => { const id = event.features?.[0]?.properties?.id; if (id) onSelectStopRef.current?.(id); });
       map.on("click", (event) => onPickCoordinatesRef.current?.({ latitude: event.lngLat.lat, longitude: event.lngLat.lng }));
-      focusMap(map, current.stops, current.day);
+      focusMap(map, current.stops, current.day, current.selectedStopId);
     });
     mapRef.current = map;
     return () => { map.remove(); mapRef.current = null; };
@@ -58,8 +63,8 @@ export function TripMap({ stops, legs, day, onSelectStop, onPickCoordinates }: T
     if (!map?.isStyleLoaded()) return;
     const source = map.getSource("itinerary") as maplibregl.GeoJSONSource | undefined;
     source?.setData(itineraryGeoJson(stops, legs, day));
-    focusMap(map, stops, day);
-  }, [day, legs, stops]);
+    focusMap(map, stops, day, selectedStopId);
+  }, [day, legs, selectedStopId, stops]);
   if (failed) return <div className="trip-map__fallback"><p>地图暂时不可用，但行程节点仍可编辑。</p><button onClick={() => { setFailed(false); mapRef.current?.setStyle(mapStyle); }}>重试地图</button></div>;
   return <div className="trip-map" ref={host} aria-label="行程地图" />;
 }
