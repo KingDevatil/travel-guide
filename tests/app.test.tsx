@@ -75,6 +75,8 @@ describe("App", () => {
     const secondDialog = screen.getByRole("dialog", { name: "添加节点" });
     await user.type(within(secondDialog).getByLabelText("所在城市"), "大阪");
     await user.click(await within(secondDialog).findByRole("button", { name: "选择 大阪，日本" }));
+    expect(within(secondDialog).getByLabelText("具体地点或地址（可选）")).toHaveAttribute("placeholder", "例如：景点、酒店或机场名称");
+    expect(within(secondDialog).queryByPlaceholderText("例如：大阪外滩、酒店、机场")).not.toBeInTheDocument();
     await user.click(within(secondDialog).getByRole("button", { name: "保存节点" }));
 
     await user.click(await screen.findByRole("button", { name: "添加交通" }));
@@ -144,6 +146,33 @@ describe("App", () => {
     stop = (await db.stops.toArray())[0];
     expect(stop.timezone).toBeUndefined();
     expect(await screen.findByText("09:00—10:00 · 行程时区 Asia/Tokyo")).toBeInTheDocument();
+  });
+
+  it("merges a multi-day node instead of rendering covered days as empty", async () => {
+    await db.stops.add({
+      id: "multi-day-stop",
+      tripId: "starter-test-trip",
+      date: "2025-10-12",
+      sortOrder: 0,
+      title: "日本环球影城",
+      country: "日本",
+      city: "大阪",
+      latitude: 34.6654,
+      longitude: 135.4323,
+      startsAt: "2025-10-12T09:00",
+      endsAt: "2025-10-15T10:00",
+      timezone: "Asia/Tokyo",
+    });
+
+    render(<App />);
+
+    const timeline = await screen.findByLabelText("行程节点管理");
+    expect(await within(timeline).findByRole("heading", { name: "2025-10-12 至 2025-10-15" })).toBeInTheDocument();
+    expect(within(timeline).getByText(/2025-10-12 09:00—2025-10-15 10:00/)).toBeInTheDocument();
+    expect(within(timeline).queryByRole("heading", { name: "2025-10-13" })).not.toBeInTheDocument();
+    expect(within(timeline).queryByRole("heading", { name: "2025-10-14" })).not.toBeInTheDocument();
+    expect(within(timeline).queryByRole("heading", { name: "2025-10-15" })).not.toBeInTheDocument();
+    expect(within(timeline).getAllByText("暂无安排")).toHaveLength(2);
   });
 
   it("finds Suvarnabhumi Airport with its common Chinese name in Bangkok", async () => {

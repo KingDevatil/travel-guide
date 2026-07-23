@@ -4,6 +4,7 @@ import { formatScheduledTimeRange, formatTimezoneLabel, isValidTimezone, toDateT
 describe("node timezone helpers", () => {
   it("formats local wall time without converting it through the device timezone", () => {
     expect(formatScheduledTimeRange("2026-10-01T09:00", "2026-10-01T10:30")).toBe("09:00—10:30");
+    expect(formatScheduledTimeRange("2026-10-01T09:00", "2026-10-04T10:00")).toBe("2026-10-01 09:00—2026-10-04 10:00");
     expect(toDateTimeLocalValue("2026-10-01T09:00:00+07:00")).toBe("2026-10-01T09:00");
   });
 

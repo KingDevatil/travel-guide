@@ -26,7 +26,12 @@ export function formatTimezoneLabel(timezone: string, date: string): string {
 }
 
 export function formatScheduledTimeRange(startsAt: string, endsAt?: string): string {
+  const startDate = startsAt.slice(0, 10);
+  const endDate = endsAt?.slice(0, 10);
   const start = startsAt.slice(11, 16);
   const end = endsAt?.slice(11, 16);
+  if (end && endDate && endDate !== startDate) {
+    return `${startDate} ${start}—${endDate} ${end}`;
+  }
   return end ? `${start}—${end}` : start;
 }
