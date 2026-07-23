@@ -202,4 +202,12 @@ a {
 @media (min-width:1024px) {
   body { overflow: hidden; }
   .planner-shell { width:125%; height:125dvh; zoom:.8; }
+  .dialog-overlay { padding:30px; }
+  .dialog-panel { width:min(980px,calc(100% - 60px));max-height:min(1080px,calc(100dvh - 60px)); }
+  .dialog-form { gap:20px;padding:32px; }
+  .dialog-title { font-size:30px; }
+  .dialog-header p,.dialog-field { font-size:15px; }
+  .dialog-input { min-height:50px;padding:11px 14px;font-size:16px; }
+  .dialog-textarea { min-height:112px; }
+  .dialog-actions button { min-height:48px;padding:10px 20px;font-size:16px; }
 }
