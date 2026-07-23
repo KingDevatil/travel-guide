@@ -213,4 +213,22 @@ a {
   .dialog-input { min-height:50px;padding:11px 14px;font-size:16px; }
   .dialog-textarea { min-height:112px; }
   .dialog-actions button { min-height:48px;padding:10px 20px;font-size:16px; }
+  .planner-management-panel { width:min(980px,calc(100% - 60px));max-height:min(1080px,calc(100dvh - 60px));padding:32px; }
+  .planner-management-panel .data-timeline__header h3 { font-size:24px; }
+  .planner-management-panel .data-timeline__header p,.planner-management-panel .data-timeline__stop span { font-size:15px; }
+  .planner-management-panel .data-timeline__day h4 { font-size:17px; }
+  .planner-management-panel .data-timeline__stop strong { font-size:18px; }
+  .planner-management-panel .data-timeline button { min-height:40px;padding:8px 12px;font-size:15px; }
+  .trip-manager-overlay { padding:30px; }
+  .trip-manager-panel { width:min(980px,calc(100% - 60px));max-height:min(1080px,calc(100dvh - 60px));padding:32px; }
+  .trip-manager-panel .trip-list__header h2 { font-size:30px; }
+  .trip-manager-panel .trip-list__select strong { font-size:18px; }
+  .trip-manager-panel .trip-list__select span,.trip-manager-panel .trip-list__actions button { font-size:15px; }
+  .trip-manager-panel .trip-list__actions button { min-height:40px;padding:8px 12px; }
+  .planner-search-panel { width:min(760px,calc(100% - 60px));max-height:min(960px,calc(100dvh - 60px));padding:32px; }
+  .planner-search-panel h2 { font-size:30px; }
+  .planner-search-panel input { height:52px;font-size:16px; }
+  .planner-search-result { padding:15px;font-size:17px; }
+  .planner-search-result span { font-size:15px; }
+  .confirm-dialog { width:min(560px,calc(100% - 60px));padding:32px; }
 }
