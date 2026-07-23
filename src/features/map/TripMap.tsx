@@ -31,7 +31,13 @@ export function TripMap({ stops, legs, day, onSelectStop, onPickCoordinates }: T
 
   useEffect(() => {
     if (!host.current || mapRef.current) return;
-    const map = new maplibregl.Map({ container: host.current, style: mapStyle, center: [0, 20], zoom: 1.5 });
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({ container: host.current, style: mapStyle, center: [0, 20], zoom: 1.5 });
+    } catch {
+      setFailed(true);
+      return;
+    }
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     map.on("error", () => setFailed(true));
     map.on("load", () => {
