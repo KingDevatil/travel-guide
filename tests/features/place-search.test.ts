@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildPlaceSearchParams, searchKnownPlaces, searchPlaces } from "../../src/services/place-search";
+import { buildPlaceSearchParams, searchCities, searchKnownPlaces, searchPlaces } from "../../src/services/place-search";
 
 describe("place search", () => {
   it("matches precise Shanghai landmarks and airports", () => {
@@ -41,5 +41,12 @@ describe("place search", () => {
     expect(request.searchParams.get("q")).toBe("浦东香格里拉");
     expect(request.searchParams.get("countrycodes")).toBe("cn");
     expect(request.searchParams.get("viewbox")).toBe("119.9737,32.7304,122.9737,29.7304");
+  });
+
+  it("searches the global city index instead of relying on a local city catalog", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify([{ place_id: 99, name: "Surabaya", display_name: "Surabaya, Jawa Timur, Indonesia", lat: "-7.2575", lon: "112.7521", address: { city: "Surabaya", country: "Indonesia" } }]), { status: 200 }));
+    await expect(searchCities("Surabaya", fetcher as typeof fetch)).resolves.toEqual([expect.objectContaining({ name: "Surabaya", country: "Indonesia", latitude: -7.2575, longitude: 112.7521 })]);
+    const request = new URL(String(fetcher.mock.calls[0][0]));
+    expect(request.searchParams.get("featureType")).toBe("city");
   });
 });

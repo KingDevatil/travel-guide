@@ -1,10 +1,10 @@
 import { Building2, MapPin, Search, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Stop } from "../../domain/models";
 import { searchCityCatalog, supportedCityTimezones, timezoneForCity, type CityOption } from "../../data/cities";
 import { formatTimezoneLabel, isValidTimezone, toDateTimeLocalValue } from "../../domain/timezones";
 import type { StopDraft } from "../../hooks/useItinerary";
-import { searchPlaces, type PlaceSearchResult } from "../../services/place-search";
+import { searchCities, searchPlaces, type CitySearchResult, type PlaceSearchResult } from "../../services/place-search";
 
 interface StopEditorProps {
   stop?: Stop;
@@ -32,6 +32,8 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezon
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [error, setError] = useState("");
   const suggestions = useMemo(() => locationResolved ? [] : searchCityCatalog(cityQuery), [cityQuery, locationResolved]);
+  const [remoteCitySuggestions, setRemoteCitySuggestions] = useState<CitySearchResult[]>([]);
+  const [searchingCity, setSearchingCity] = useState(false);
   const timezoneOptions = useMemo(() => Array.from(new Set([tripTimezone, draft.timezone, ...supportedCityTimezones].filter((value): value is string => Boolean(value)))), [draft.timezone, tripTimezone]);
   const update = <K extends keyof StopDraft>(key: K, value: StopDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const updateDate = (nextDate: string) => setDraft((current) => nextDate ? ({
@@ -41,7 +43,27 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezon
     endsAt: current.endsAt ? `${nextDate}${current.endsAt.slice(10)}` : `${nextDate}T10:00`,
   }) : ({ ...current, date: "", startsAt: "", endsAt: "" }));
 
-  const selectCity = (city: CityOption) => {
+  useEffect(() => {
+    if (locationResolved || !cityQuery.trim() || suggestions.length > 0) {
+      setRemoteCitySuggestions([]);
+      setSearchingCity(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setSearchingCity(true);
+      void searchCities(cityQuery).then((cities) => {
+        if (!cancelled) setRemoteCitySuggestions(cities);
+      }).catch(() => {
+        if (!cancelled) setRemoteCitySuggestions([]);
+      }).finally(() => {
+        if (!cancelled) setSearchingCity(false);
+      });
+    }, 500);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [cityQuery, locationResolved, suggestions.length]);
+
+  const selectCity = (city: CityOption | CitySearchResult) => {
     setCityQuery(city.name);
     setLocationResolved(true);
     setError("");
@@ -91,8 +113,9 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezon
       <div className="dialog-field dialog-wide city-search-field">
         <label htmlFor="stop-city-search">所在城市</label>
         <div className="city-search-input"><Search aria-hidden="true" /><input id="stop-city-search" className="dialog-input" autoFocus autoComplete="off" placeholder="搜索城市，如京都、Osaka" value={cityQuery} onChange={(event) => { setCityQuery(event.target.value); setLocationResolved(false); setDraft((current) => ({ ...current, city: event.target.value })); }} /></div>
-        {suggestions.length > 0 && <div className="city-search-results" aria-label="城市搜索结果">{suggestions.map((city) => <button type="button" key={`${city.country}-${city.name}`} aria-label={`选择 ${city.name}，${city.country}`} onClick={() => selectCity(city)}><MapPin aria-hidden="true" /><span><strong>{city.name}</strong><small>{city.country}</small></span></button>)}</div>}
-        {cityQuery.trim() && !locationResolved && suggestions.length === 0 && <p className="field-hint">未找到匹配城市，可换用中文或英文名称，或在地图页点选位置。</p>}
+        {(suggestions.length > 0 || remoteCitySuggestions.length > 0) && <div className="city-search-results" aria-label="城市搜索结果">{[...suggestions, ...remoteCitySuggestions].map((city) => <button type="button" key={`${city.country}-${city.name}-${city.latitude}-${city.longitude}`} aria-label={`选择 ${city.name}，${city.country}`} onClick={() => selectCity(city)}><MapPin aria-hidden="true" /><span><strong>{city.name}</strong><small>{city.country}</small></span></button>)}</div>}
+        {searchingCity && <p className="field-hint">正在搜索全球城市…</p>}
+        {cityQuery.trim() && !locationResolved && suggestions.length === 0 && !searchingCity && remoteCitySuggestions.length === 0 && <p className="field-hint">未找到匹配城市，可换用中文或英文名称，或在地图页点选位置。</p>}
         {locationResolved && <p className="location-confirmed"><MapPin aria-hidden="true" />已选择城市：{draft.city || "地图选点"}{draft.country ? `，${draft.country}` : ""}</p>}
       </div>
       {locationResolved && draft.city && <div className="dialog-field dialog-wide place-search-field"><label htmlFor="stop-place-search">具体地点或地址（可选）</label><div className="place-search-input"><input id="stop-place-search" className="dialog-input" placeholder="例如：景点、酒店或机场名称" value={placeQuery} onChange={(event) => { setPlaceQuery(event.target.value); setPlaceResolved(false); setPlaceResults([]); setPlaceSearchAttempted(false); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void findPlaces(); } }} /><button type="button" onClick={() => void findPlaces()} disabled={!placeQuery.trim() || searchingPlace}><Search aria-hidden="true" />{searchingPlace ? "搜索中…" : "搜索地点"}</button></div>{placeResults.length > 0 && <div className="place-search-results" aria-label="具体地点搜索结果">{placeResults.map((place) => <button type="button" key={place.id} aria-label={`选择地点 ${place.name}`} onClick={() => selectPlace(place)}><Building2 aria-hidden="true" /><span><strong>{place.name}</strong><small>{place.address}</small></span></button>)}</div>}{placeQuery.trim() && !placeResolved && !searchingPlace && placeResults.length === 0 && <p className="field-hint">{placeSearchAttempted ? "没有找到匹配地点，请补充区县或道路名称后重试。" : "输入地点后点击“搜索地点”，从结果中选择以保存精确位置。"}</p>}{placeResolved && <p className="location-confirmed"><MapPin aria-hidden="true" />已定位具体地点：{draft.title}<small>{draft.address}</small></p>}<p className="place-attribution">地点搜索由 OpenStreetMap Nominatim 提供</p></div>}

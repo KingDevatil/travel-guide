@@ -8,6 +8,14 @@ export interface PlaceSearchResult {
   longitude: number;
 }
 
+export interface CitySearchResult {
+  name: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+  aliases: string[];
+}
+
 interface SearchPlacesInput {
   query: string;
   city: string;
@@ -100,6 +108,38 @@ export function searchKnownPlaces({ query, city }: SearchPlacesInput): PlaceSear
 
 let lastRemoteRequestAt = 0;
 const cache = new Map<string, PlaceSearchResult[]>();
+const cityCache = new Map<string, CitySearchResult[]>();
+
+async function waitForRemoteSearchSlot() {
+  const remainingDelay = 1000 - (Date.now() - lastRemoteRequestAt);
+  if (remainingDelay > 0) await new Promise((resolve) => setTimeout(resolve, remainingDelay));
+  lastRemoteRequestAt = Date.now();
+}
+
+export async function searchCities(query: string, fetcher: typeof fetch = fetch): Promise<CitySearchResult[]> {
+  const normalizedQuery = normalize(query);
+  if (!normalizedQuery) return [];
+  const cached = cityCache.get(normalizedQuery);
+  if (cached) return cached;
+
+  await waitForRemoteSearchSlot();
+  const params = new URLSearchParams({
+    q: query.trim(), format: "jsonv2", addressdetails: "1", featureType: "city", limit: "6", dedupe: "1", "accept-language": "zh-CN,zh,en",
+  });
+  const response = await fetcher(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error("城市搜索服务暂时不可用");
+  const payload = await response.json() as Array<{ place_id: number; name?: string; display_name: string; lat: string; lon: string; address?: { city?: string; town?: string; village?: string; municipality?: string; county?: string; state?: string; country?: string } }>;
+  const results = payload.map((place) => {
+    const address = place.address;
+    return {
+      name: place.name?.trim() || address?.city || address?.town || address?.village || address?.municipality || place.display_name.split(",")[0].trim(),
+      country: address?.country || "未标注国家",
+      latitude: Number(place.lat), longitude: Number(place.lon), aliases: [],
+    };
+  }).filter((city) => Number.isFinite(city.latitude) && Number.isFinite(city.longitude));
+  cityCache.set(normalizedQuery, results);
+  return results;
+}
 
 export async function searchPlaces(input: SearchPlacesInput, fetcher: typeof fetch = fetch): Promise<PlaceSearchResult[]> {
   const known = searchKnownPlaces(input);
@@ -109,9 +149,7 @@ export async function searchPlaces(input: SearchPlacesInput, fetcher: typeof fet
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
-  const remainingDelay = 1000 - (Date.now() - lastRemoteRequestAt);
-  if (remainingDelay > 0) await new Promise((resolve) => setTimeout(resolve, remainingDelay));
-  lastRemoteRequestAt = Date.now();
+  await waitForRemoteSearchSlot();
 
   const params = buildPlaceSearchParams(input);
   const response = await fetcher(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: { Accept: "application/json" } });
