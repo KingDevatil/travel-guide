@@ -197,12 +197,17 @@ a {
 .planner-item-main{display:block;width:100%;min-width:0;text-align:inherit;color:inherit}.item-icon.place{background:#53627a}.planner-item-menu-button{position:absolute;z-index:3;right:15px;bottom:15px;display:grid;place-items:center;width:30px;height:30px;border-radius:6px;color:#354158}.planner-item-menu-button:hover{background:var(--color-soft)}.planner-item-menu-button svg{width:20px}.planner-item-menu{position:absolute;z-index:5;right:10px;bottom:-82px;display:grid;width:142px;padding:6px;border:1px solid var(--color-border);border-radius:8px;background:#fff;box-shadow:0 8px 20px rgb(11 23 57 / 16%)}.planner-item-menu button{padding:9px 10px;border-radius:6px;text-align:left;font-size:14px}.planner-item-menu button:hover{background:var(--color-soft)}.planner-item-menu .danger{color:#b42318}
 .planner-map-art .trip-map{height:100%;margin:0;border:0;border-radius:0}.planner-map footer button:disabled{cursor:not-allowed;color:#94a0b1}.planner-management-overlay{position:fixed;inset:0;z-index:300;display:grid;place-items:center;padding:32px;background:rgb(11 23 57 / 46%)}.planner-management-panel{position:relative;width:min(900px,100%);max-height:calc(100dvh - 64px);overflow:auto;padding:26px;border-radius:16px;background:#fff;box-shadow:0 22px 60px rgb(11 23 57 / 28%)}.planner-management-panel .data-timeline{margin:0;padding:0;border:0}.planner-management-close{position:absolute;z-index:1;right:16px;top:14px;display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--color-soft);font-size:24px}
 .map-workspace{display:grid;grid-template-columns:minmax(240px,300px) minmax(0,1fr);flex:1;min-height:0;border:1px solid var(--color-border);border-radius:12px;overflow:hidden}.map-workspace>.trip-map{height:100%;margin:0;border:0;border-radius:0}.map-day-list{overflow:auto;padding:12px;border-right:1px solid var(--color-border);background:var(--color-soft)}.map-day-list>section{border-bottom:1px solid var(--color-border)}.map-day-list__date{display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px 10px;text-align:left;font-weight:700;color:var(--color-text);border-radius:8px}.map-day-list__date small{font-weight:500;color:var(--color-muted)}.map-day-list>section.active>.map-day-list__date{background:#fff;color:var(--color-primary)}.map-day-list__stops{display:grid;gap:6px;padding:4px 0 12px}.map-day-list__stops button{display:grid;gap:3px;width:100%;padding:10px;border-radius:8px;background:#fff;text-align:left}.map-day-list__stops button:hover,.map-day-list__stops button.active{background:var(--color-primary-soft);outline:1px solid var(--color-primary)}.map-day-list__stops strong,.map-day-list__stops span{display:block}.map-day-list__stops span,.map-day-list__stops p{color:var(--color-muted);font-size:12px}.map-day-list__stops p{padding:8px 10px}
-@media(max-width:1023px){.planner-shell{display:none}}
+/* Keep the workspace reachable at narrow widths until the dedicated mobile
+   workspace is wired to the current trip data.  Hiding the only rendered
+   workspace produced a blank page immediately after creating a trip. */
+@media(max-width:1023px){
+  body { overflow-x:auto; }
+  .planner-shell { display:grid; min-width:1024px; }
+}
 
-/* The desktop workspace is intentionally rendered at the product's compact 80% scale. */
 @media (min-width:1024px) {
   body { overflow: hidden; }
-  .planner-shell { width:100%; height:125dvh; zoom:.8; }
+  .planner-shell { width:100%; height:100dvh; }
   .planner-main > .feature-panel { flex:1;min-width:0; }
   .planner-main > .map-view { display:flex;flex-direction:column;border:0;border-radius:0;box-shadow:none; }
   .planner-main > .map-view .trip-map { flex:1;height:auto;min-height:0; }
@@ -232,4 +237,22 @@ a {
   .planner-search-result { padding:15px;font-size:17px; }
   .planner-search-result span { font-size:15px; }
   .confirm-dialog { width:min(560px,calc(100% - 60px));padding:32px; }
+}
+
+@media (min-width:1024px) and (max-width:1199px) {
+  .planner-topbar { padding:0 16px; }
+  .planner-brand { padding-right:16px; }
+  .planner-trip { min-width:260px; padding:0 18px; }
+  .planner-topbar nav button { min-width:100px; }
+  .planner-tools { gap:8px; }
+}
+
+/* Keep the active map-range control visibly framed on all four edges. */
+.planner-map > header .active {
+  position: relative;
+  z-index: 1;
+  border-color: #10203f;
+  color: #0b1739;
+  background: #fff;
+  box-shadow: inset 0 0 0 2px #10203f;
 }
