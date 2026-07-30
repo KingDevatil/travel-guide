@@ -4,16 +4,18 @@ import type { Trip } from "../../domain/models";
 import type { TripDraft } from "../../hooks/useTrips";
 import { getStops } from "../../db/trip-repository";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
+import { DEFAULT_TRIP_ICON, TRIP_ICON_OPTIONS } from "./trip-icon-options";
 
 interface TripEditorProps { trip?: Trip; onSave: (draft: TripDraft) => Promise<void>; onClose: () => void; }
-const emptyDraft: TripDraft = { title: "", startDate: "", endDate: "", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai", defaultCurrency: "CNY" };
+const emptyDraft: TripDraft = { title: "", icon: DEFAULT_TRIP_ICON, startDate: "", endDate: "", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai", defaultCurrency: "CNY" };
+const toDraft = (trip?: Trip): TripDraft => trip ? { ...trip, icon: trip.icon ?? DEFAULT_TRIP_ICON } : emptyDraft;
 
 export function TripEditor({ trip, onSave, onClose }: TripEditorProps) {
   const panelRef = useDialogAccessibility<HTMLFormElement>(true, onClose);
-  const [draft, setDraft] = useState<TripDraft>(trip ? trip : emptyDraft);
+  const [draft, setDraft] = useState<TripDraft>(() => toDraft(trip));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => setDraft(trip ?? emptyDraft), [trip]);
+  useEffect(() => setDraft(toDraft(trip)), [trip]);
   const update = <K extends keyof TripDraft>(key: K, value: TripDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -27,6 +29,16 @@ export function TripEditor({ trip, onSave, onClose }: TripEditorProps) {
     <form ref={panelRef} className="dialog-panel dialog-form" onSubmit={submit}>
       <div className="dialog-header dialog-wide"><div><h2 id="trip-editor-title" className="dialog-title">{trip ? "编辑行程" : "新建行程"}</h2><p>修改名称、日期和行程默认设置。</p></div><button type="button" className="dialog-close-btn" onClick={onClose} aria-label="关闭行程编辑"><X aria-hidden="true" /></button></div>
       <label className="dialog-field">行程名称<input className="dialog-input" autoFocus value={draft.title} onChange={(e) => update("title", e.target.value)} /></label>
+      <fieldset className="trip-icon-picker dialog-wide">
+        <legend>行程图标</legend>
+        <p>选择一个容易辨认的主题图标。</p>
+        <div className="trip-icon-picker__grid">
+          {TRIP_ICON_OPTIONS.map(({ value, label, Icon }) => <label key={value}>
+            <input type="radio" name="trip-icon" value={value} checked={(draft.icon ?? DEFAULT_TRIP_ICON) === value} onChange={() => update("icon", value)} aria-label={`选择图标：${label}`} />
+            <span><Icon aria-hidden="true" /><b>{label}</b></span>
+          </label>)}
+        </div>
+      </fieldset>
       <label className="dialog-field">开始日期<input className="dialog-input" type="date" value={draft.startDate} onChange={(e) => update("startDate", e.target.value)} /></label>
       <label className="dialog-field">结束日期<input className="dialog-input" type="date" value={draft.endDate} onChange={(e) => update("endDate", e.target.value)} /></label>
       <label className="dialog-field">时区<input className="dialog-input" value={draft.timezone} onChange={(e) => update("timezone", e.target.value)} /></label>

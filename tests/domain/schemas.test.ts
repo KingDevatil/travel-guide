@@ -31,6 +31,11 @@ describe("tripSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts a supported optional trip icon and rejects unknown icons", () => {
+    expect(tripSchema.safeParse({ ...validTrip, icon: "flight" }).success).toBe(true);
+    expect(tripSchema.safeParse({ ...validTrip, icon: "rocket" }).success).toBe(false);
+  });
+
   it("accepts a trip with optional archivedAt", () => {
     const result = tripSchema.safeParse({
       ...validTrip,

@@ -4,10 +4,24 @@ export type { LineString } from "geojson";
 
 export type CurrencyCode = string;
 
+export type TripIconName =
+  | "map"
+  | "flight"
+  | "train"
+  | "road"
+  | "cruise"
+  | "nature"
+  | "beach"
+  | "culture"
+  | "food"
+  | "camera"
+  | "business";
+
 export interface Trip {
   id: string;
   schemaVersion: 1;
   title: string;
+  icon?: TripIconName;
   startDate: string;
   endDate: string;
   timezone: string;

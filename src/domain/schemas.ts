@@ -17,6 +17,11 @@ const splitMethodSchema = z.enum(["equal", "shares", "percentage", "fixed"]);
 
 const currencyCodeSchema = z.string().min(1, "currency must not be empty").max(10);
 
+const tripIconSchema = z.enum([
+  "map", "flight", "train", "road", "cruise", "nature",
+  "beach", "culture", "food", "camera", "business",
+]);
+
 export const participantSchema = z.object({
   id: idSchema,
   tripId: idSchema,
@@ -102,6 +107,7 @@ export const tripSchema = z.object({
   id: idSchema,
   schemaVersion: z.literal(1),
   title: z.string().min(1, "trip title must not be empty"),
+  icon: tripIconSchema.optional(),
   startDate: z.string().regex(isoDatePattern, "startDate must be YYYY-MM-DD"),
   endDate: z.string().regex(isoDatePattern, "endDate must be YYYY-MM-DD"),
   timezone: z.string().min(1, "timezone must not be empty"),

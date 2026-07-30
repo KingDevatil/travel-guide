@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../src/App";
 import { db } from "../src/db/travel-db";
@@ -90,7 +90,7 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "账单" }));
-    expect(screen.getByRole("heading", { name: "账单与预算" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "账单与预算" })).toBeInTheDocument();
     expect(screen.getByLabelText("消费名称")).toBeInTheDocument();
     expect(screen.queryByText("旅行开支记录功能即将上线")).not.toBeInTheDocument();
   });
@@ -280,6 +280,23 @@ describe("App", () => {
     expect(screen.queryByRole("dialog", { name: "我的行程" })).not.toBeInTheDocument();
   });
 
+  it("persists a selected trip icon across the editor, workspace, and manager", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "管理行程" }));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const editor = screen.getByRole("dialog", { name: "编辑行程" });
+    await user.click(within(editor).getByRole("radio", { name: "选择图标：航空" }));
+    await user.click(within(editor).getByRole("button", { name: "保存" }));
+
+    await waitFor(async () => expect((await db.trips.get("starter-test-trip"))?.icon).toBe("flight"));
+    expect(await screen.findByRole("img", { name: "行程图标：航空" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "管理行程" }));
+    expect(within(screen.getByRole("dialog", { name: "我的行程" })).getByRole("img", { name: "行程图标：航空" })).toBeInTheDocument();
+  });
+
   it("deletes the last trip without recreating the starter trip", async () => {
     const user = userEvent.setup();
     const firstRender = render(<App />);
@@ -304,7 +321,7 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "行李" }));
-    await user.click(screen.getByRole("button", { name: "管理模板" }));
+    await user.click(await screen.findByRole("button", { name: "管理模板" }));
     const manager = screen.getByRole("dialog", { name: "管理行李模板" });
     await user.click(within(manager).getByRole("button", { name: "编辑 海外旅行" }));
     await user.clear(within(manager).getByLabelText("模板名称"));
