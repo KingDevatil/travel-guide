@@ -21,6 +21,11 @@ export class TravelDB extends Dexie {
       expenses: "&id, tripId, status, category, stopId",
       packingItems: "&id, tripId, category",
     });
+
+    this.version(2).stores({
+      stops: "&id, tripId, date, [tripId+date], sortOrder",
+      expenses: "&id, tripId, status, category, stopId, legId",
+    });
   }
 }
 

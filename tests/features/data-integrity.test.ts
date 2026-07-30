@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "../../src/db/travel-db";
-import { duplicateTrip } from "../../src/db/trip-repository";
+import { deleteExpense, deleteLeg, deleteStop, duplicateTrip } from "../../src/db/trip-repository";
 import { tripDates } from "../../src/domain/dates";
 import { importBackup } from "../../src/features/transfer/import-trip";
 
@@ -74,5 +74,31 @@ describe("travel data integrity", () => {
     const invalid = { format: "travel-planner-backup", schemaVersion: 1, exportedAt: now, appVersion: "1", trip: { id: "t1", schemaVersion: 1, title: "Bad", startDate: "2026-08-01", endDate: "2026-08-02", timezone: "UTC", defaultCurrency: "USD", participantIds: [], createdAt: now, updatedAt: now }, participants: [], stops: [], legs: [], expenses: [{ nope: true }], packingItems: [] };
     await expect(importBackup(JSON.stringify(invalid))).rejects.toThrow();
     expect(await db.trips.count()).toBe(0);
+  });
+
+  it("clears cross-feature references when stops, legs, or expenses are deleted", async () => {
+    await db.trips.add({ id: "t1", schemaVersion: 1, title: "References", startDate: "2026-08-01", endDate: "2026-08-02", timezone: "Asia/Shanghai", defaultCurrency: "CNY", participantIds: [], createdAt: now, updatedAt: now });
+    await db.stops.bulkAdd([
+      { id: "s1", tripId: "t1", date: "2026-08-01", sortOrder: 0, title: "起点", latitude: 31, longitude: 121 },
+      { id: "s2", tripId: "t1", date: "2026-08-01", sortOrder: 1, title: "终点", latitude: 32, longitude: 122 },
+    ]);
+    await db.legs.add({ id: "l1", tripId: "t1", fromStopId: "s1", toStopId: "s2", mode: "train", expenseId: "e1" });
+    await db.expenses.add({ id: "e1", tripId: "t1", title: "车票", amountMinor: 1000, currency: "CNY", status: "planned", category: "交通", beneficiaryParticipantIds: [], splitMethod: "equal", splitValues: {}, legId: "l1", createdAt: now, updatedAt: now });
+
+    await deleteLeg("l1");
+    expect((await db.expenses.get("e1"))?.legId).toBeUndefined();
+
+    await db.legs.add({ id: "l2", tripId: "t1", fromStopId: "s1", toStopId: "s2", mode: "bus", expenseId: "e2" });
+    await db.expenses.add({ id: "e2", tripId: "t1", title: "公交", amountMinor: 200, currency: "CNY", status: "planned", category: "交通", beneficiaryParticipantIds: [], splitMethod: "equal", splitValues: {}, legId: "l2", createdAt: now, updatedAt: now });
+    await deleteExpense("e2");
+    expect((await db.legs.get("l2"))?.expenseId).toBeUndefined();
+
+    await db.legs.update("l2", { expenseId: "e3" });
+    await db.expenses.add({ id: "e3", tripId: "t1", title: "保留车费", amountMinor: 300, currency: "CNY", status: "planned", category: "交通", beneficiaryParticipantIds: [], splitMethod: "equal", splitValues: {}, legId: "l2", createdAt: now, updatedAt: now });
+    await db.expenses.add({ id: "e4", tripId: "t1", title: "景点票", amountMinor: 500, currency: "CNY", status: "planned", category: "门票", beneficiaryParticipantIds: [], splitMethod: "equal", splitValues: {}, stopId: "s1", createdAt: now, updatedAt: now });
+    await deleteStop("s1");
+    expect(await db.legs.get("l2")).toBeUndefined();
+    expect((await db.expenses.get("e3"))?.legId).toBeUndefined();
+    expect((await db.expenses.get("e4"))?.stopId).toBeUndefined();
   });
 });

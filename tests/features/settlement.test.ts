@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Expense, Participant } from "../../src/domain/models";
-import { allocateExpense, settle } from "../../src/features/expenses/settlement";
+import { allocateExpense, participantBalances, settle } from "../../src/features/expenses/settlement";
 
 const people: Participant[] = [{ id: "a", tripId: "t", name: "甲" }, { id: "b", tripId: "t", name: "乙" }, { id: "c", tripId: "t", name: "丙" }];
 const base: Expense = { id: "e", tripId: "t", title: "餐费", amountMinor: 100, currency: "CNY", status: "paid", category: "餐饮", payerParticipantId: "a", beneficiaryParticipantIds: ["a", "b", "c"], splitMethod: "equal", splitValues: {}, createdAt: "2026-07-22T00:00:00.000Z", updatedAt: "2026-07-22T00:00:00.000Z" };
@@ -29,5 +29,13 @@ describe("expense allocation", () => {
     const transfers = settle(expenses, people);
     expect(transfers.filter((item) => item.currency === "CNY").reduce((sum, item) => sum + item.amountMinor, 0)).toBe(66);
     expect(transfers.filter((item) => item.currency === "USD").reduce((sum, item) => sum + item.amountMinor, 0)).toBe(60);
+  });
+
+  it("reports each participant's paid, owed, and net amount", () => {
+    expect(participantBalances([base], people)).toEqual([
+      { participantId: "a", paidMinor: 100, owedMinor: 34, netMinor: 66, currency: "CNY" },
+      { participantId: "b", paidMinor: 0, owedMinor: 33, netMinor: -33, currency: "CNY" },
+      { participantId: "c", paidMinor: 0, owedMinor: 33, netMinor: -33, currency: "CNY" },
+    ]);
   });
 });

@@ -1,10 +1,11 @@
 import { Building2, MapPin, Search, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Stop } from "../../domain/models";
 import { searchCityCatalog, supportedCityTimezones, timezoneForCity, type CityOption } from "../../data/cities";
 import { formatTimezoneLabel, isValidTimezone, toDateTimeLocalValue } from "../../domain/timezones";
 import type { StopDraft } from "../../hooks/useItinerary";
-import { searchCities, searchPlaces, type CitySearchResult, type PlaceSearchResult } from "../../services/place-search";
+import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
+import { searchCities, searchPlaces, type CitySearchResult, type PlaceSearchProvider, type PlaceSearchResult } from "../../services/place-search";
 
 interface StopEditorProps {
   stop?: Stop;
@@ -19,6 +20,7 @@ interface StopEditorProps {
 }
 
 export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezone, initialCoordinates, existingStops = [], onSave, onClose }: StopEditorProps) {
+  const panelRef = useDialogAccessibility<HTMLFormElement>(true, onClose);
   const initialDate = stop?.date ?? date;
   const [draft, setDraft] = useState<StopDraft>({ date: initialDate, title: stop?.title ?? "", country: stop?.country ?? "", city: stop?.city ?? "", address: stop?.address ?? "", latitude: stop?.latitude ?? initialCoordinates?.latitude ?? 0, longitude: stop?.longitude ?? initialCoordinates?.longitude ?? 0, startsAt: stop?.startsAt ? toDateTimeLocalValue(stop.startsAt) : `${initialDate}T09:00`, endsAt: stop?.endsAt ? toDateTimeLocalValue(stop.endsAt) : `${initialDate}T10:00`, timezone: stop?.timezone ?? tripTimezone, content: stop?.content ?? "", notes: stop?.notes ?? "" });
   const [useLocalTime, setUseLocalTime] = useState(stop ? Boolean(stop.timezone) : true);
@@ -27,12 +29,13 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezon
   const [placeResults, setPlaceResults] = useState<PlaceSearchResult[]>([]);
   const [placeResolved, setPlaceResolved] = useState(Boolean(stop?.address));
   const [placeSearchAttempted, setPlaceSearchAttempted] = useState(false);
+  const [placeSearchProvider, setPlaceSearchProvider] = useState<PlaceSearchProvider>();
   const [searchingPlace, setSearchingPlace] = useState(false);
   const [locationResolved, setLocationResolved] = useState(Boolean(stop || initialCoordinates));
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [error, setError] = useState("");
-  const suggestions = useMemo(() => locationResolved ? [] : searchCityCatalog(cityQuery), [cityQuery, locationResolved]);
-  const [remoteCitySuggestions, setRemoteCitySuggestions] = useState<CitySearchResult[]>([]);
+  const [cityResults, setCityResults] = useState<Array<CityOption | CitySearchResult>>([]);
+  const [citySearchAttempted, setCitySearchAttempted] = useState(false);
   const [searchingCity, setSearchingCity] = useState(false);
   const timezoneOptions = useMemo(() => Array.from(new Set([tripTimezone, draft.timezone, ...supportedCityTimezones].filter((value): value is string => Boolean(value)))), [draft.timezone, tripTimezone]);
   const update = <K extends keyof StopDraft>(key: K, value: StopDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
@@ -43,38 +46,52 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezon
     endsAt: current.endsAt ? `${nextDate}${current.endsAt.slice(10)}` : `${nextDate}T10:00`,
   }) : ({ ...current, date: "", startsAt: "", endsAt: "" }));
 
-  useEffect(() => {
-    if (locationResolved || !cityQuery.trim() || suggestions.length > 0) {
-      setRemoteCitySuggestions([]);
+  const findCities = async () => {
+    const query = cityQuery.trim();
+    if (!query) return;
+    setSearchingCity(true);
+    setCitySearchAttempted(false);
+    setCityResults([]);
+    setError("");
+    const catalogResults = searchCityCatalog(query);
+    if (catalogResults.length > 0) {
+      setCityResults(catalogResults);
+      setCitySearchAttempted(true);
       setSearchingCity(false);
       return;
     }
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      setSearchingCity(true);
-      void searchCities(cityQuery).then((cities) => {
-        if (!cancelled) setRemoteCitySuggestions(cities);
-      }).catch(() => {
-        if (!cancelled) setRemoteCitySuggestions([]);
-      }).finally(() => {
-        if (!cancelled) setSearchingCity(false);
-      });
-    }, 500);
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [cityQuery, locationResolved, suggestions.length]);
+    try {
+      const batch = await searchCities(query);
+      setCityResults(batch.results);
+      setCitySearchAttempted(true);
+    } catch (reason) {
+      setCityResults([]);
+      setCitySearchAttempted(true);
+      setError(reason instanceof Error ? reason.message : "城市搜索失败");
+    } finally {
+      setSearchingCity(false);
+    }
+  };
 
   const selectCity = (city: CityOption | CitySearchResult) => {
     setCityQuery(city.name);
+    setCityResults([]);
+    setCitySearchAttempted(false);
     setLocationResolved(true);
     setError("");
-    setPlaceQuery(""); setPlaceResults([]); setPlaceResolved(false); setPlaceSearchAttempted(false);
+    setPlaceQuery(""); setPlaceResults([]); setPlaceResolved(false); setPlaceSearchAttempted(false); setPlaceSearchProvider(undefined);
     setDraft((current) => ({ ...current, title: current.title.trim() && current.title !== current.city ? current.title : city.name, country: city.country, city: city.name, address: "", latitude: city.latitude, longitude: city.longitude, timezone: useLocalTime ? timezoneForCity(city.name) ?? current.timezone ?? tripTimezone : undefined }));
   };
 
   const findPlaces = async () => {
     if (!draft.city || !placeQuery.trim()) return;
     setSearchingPlace(true); setPlaceSearchAttempted(false); setError("");
-    try { setPlaceResults(await searchPlaces({ query: placeQuery, city: draft.city, country: draft.country, cityCoordinates: { latitude: draft.latitude, longitude: draft.longitude } })); setPlaceSearchAttempted(true); }
+    try {
+      const batch = await searchPlaces({ query: placeQuery, city: draft.city, country: draft.country, cityCoordinates: { latitude: draft.latitude, longitude: draft.longitude } });
+      setPlaceResults(batch.results);
+      setPlaceSearchProvider(batch.provider);
+      setPlaceSearchAttempted(true);
+    }
     catch (reason) { setPlaceResults([]); setError(reason instanceof Error ? `${reason.message}，可展开“调整精确位置”手动设置。` : "地点搜索失败"); }
     finally { setSearchingPlace(false); }
   };
@@ -90,6 +107,7 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezon
     setPlaceResults([]);
     setPlaceResolved(Boolean(source.address));
     setPlaceSearchAttempted(false);
+    setPlaceSearchProvider(undefined);
     setLocationResolved(true);
     setDraft((current) => ({ ...current, title: source.title, country: source.country ?? "", city: source.city ?? source.title, address: source.address ?? "", latitude: source.latitude, longitude: source.longitude, timezone: useLocalTime ? source.timezone ?? timezoneForCity(source.city ?? "") ?? current.timezone ?? tripTimezone : undefined }));
   };
@@ -100,8 +118,8 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezon
     setDraft((current) => ({ ...current, [key]: value, address: placeQuery.trim() || current.address }));
   };
 
-  return <div className="dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="stop-editor-title">
-    <form className="dialog-panel dialog-form dialog-form--wide" onSubmit={async (event) => {
+  return <div className="dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="stop-editor-title" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <form ref={panelRef} className="dialog-panel dialog-form dialog-form--wide" onSubmit={async (event) => {
       event.preventDefault();
       if (!locationResolved) { setError("请先从搜索结果选择城市，或前往地图页点选位置。"); return; }
       if (placeQuery.trim() && !placeResolved) { setError("请点击“搜索地点”并选择具体地点；如果只规划城市，可清空具体地点。"); return; }
@@ -112,13 +130,13 @@ export function StopEditor({ stop, date, tripStartDate, tripEndDate, tripTimezon
       <div className="dialog-header dialog-wide"><div><h2 id="stop-editor-title" className="dialog-title">{stop ? "编辑节点" : "添加节点"}</h2><p>先选择城市，再定位景点、酒店、机场等具体地点。</p></div><button type="button" className="dialog-close-btn" onClick={onClose} aria-label="关闭节点编辑"><X aria-hidden="true" /></button></div>
       <div className="dialog-field dialog-wide city-search-field">
         <label htmlFor="stop-city-search">所在城市</label>
-        <div className="city-search-input"><Search aria-hidden="true" /><input id="stop-city-search" className="dialog-input" autoFocus autoComplete="off" placeholder="搜索城市，如京都、Osaka" value={cityQuery} onChange={(event) => { setCityQuery(event.target.value); setLocationResolved(false); setDraft((current) => ({ ...current, city: event.target.value })); }} /></div>
-        {(suggestions.length > 0 || remoteCitySuggestions.length > 0) && <div className="city-search-results" aria-label="城市搜索结果">{[...suggestions, ...remoteCitySuggestions].map((city) => <button type="button" key={`${city.country}-${city.name}-${city.latitude}-${city.longitude}`} aria-label={`选择 ${city.name}，${city.country}`} onClick={() => selectCity(city)}><MapPin aria-hidden="true" /><span><strong>{city.name}</strong><small>{city.country}</small></span></button>)}</div>}
+        <div className="city-search-input"><input id="stop-city-search" className="dialog-input" autoFocus autoComplete="off" placeholder="搜索城市，如京都、Osaka" value={cityQuery} onChange={(event) => { setCityQuery(event.target.value); setCityResults([]); setCitySearchAttempted(false); setLocationResolved(false); setDraft((current) => ({ ...current, city: event.target.value })); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void findCities(); } }} /><button type="button" onClick={() => void findCities()} disabled={!cityQuery.trim() || searchingCity}><Search aria-hidden="true" />{searchingCity ? "搜索中…" : "搜索城市"}</button></div>
+        {cityResults.length > 0 && <div className="city-search-results" aria-label="城市搜索结果">{cityResults.map((city) => <button type="button" key={`${city.country}-${city.name}-${city.latitude}-${city.longitude}`} aria-label={`选择 ${city.name}，${city.country}`} onClick={() => selectCity(city)}><MapPin aria-hidden="true" /><span><strong>{city.name}</strong><small>{city.country}</small></span></button>)}</div>}
         {searchingCity && <p className="field-hint">正在搜索全球城市…</p>}
-        {cityQuery.trim() && !locationResolved && suggestions.length === 0 && !searchingCity && remoteCitySuggestions.length === 0 && <p className="field-hint">未找到匹配城市，可换用中文或英文名称，或在地图页点选位置。</p>}
+        {cityQuery.trim() && !locationResolved && !searchingCity && cityResults.length === 0 && <p className="field-hint">{citySearchAttempted ? "未找到匹配城市，可换用中文或英文名称，或在地图页点选位置。" : "输入城市后点击“搜索城市”，再从结果中选择。"}</p>}
         {locationResolved && <p className="location-confirmed"><MapPin aria-hidden="true" />已选择城市：{draft.city || "地图选点"}{draft.country ? `，${draft.country}` : ""}</p>}
       </div>
-      {locationResolved && draft.city && <div className="dialog-field dialog-wide place-search-field"><label htmlFor="stop-place-search">具体地点或地址（可选）</label><div className="place-search-input"><input id="stop-place-search" className="dialog-input" placeholder="例如：景点、酒店或机场名称" value={placeQuery} onChange={(event) => { setPlaceQuery(event.target.value); setPlaceResolved(false); setPlaceResults([]); setPlaceSearchAttempted(false); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void findPlaces(); } }} /><button type="button" onClick={() => void findPlaces()} disabled={!placeQuery.trim() || searchingPlace}><Search aria-hidden="true" />{searchingPlace ? "搜索中…" : "搜索地点"}</button></div>{placeResults.length > 0 && <div className="place-search-results" aria-label="具体地点搜索结果">{placeResults.map((place) => <button type="button" key={place.id} aria-label={`选择地点 ${place.name}`} onClick={() => selectPlace(place)}><Building2 aria-hidden="true" /><span><strong>{place.name}</strong><small>{place.address}</small></span></button>)}</div>}{placeQuery.trim() && !placeResolved && !searchingPlace && placeResults.length === 0 && <p className="field-hint">{placeSearchAttempted ? "没有找到匹配地点，请补充区县或道路名称后重试。" : "输入地点后点击“搜索地点”，从结果中选择以保存精确位置。"}</p>}{placeResolved && <p className="location-confirmed"><MapPin aria-hidden="true" />已定位具体地点：{draft.title}<small>{draft.address}</small></p>}<p className="place-attribution">地点搜索由 OpenStreetMap Nominatim 提供</p></div>}
+      {locationResolved && draft.city && <div className="dialog-field dialog-wide place-search-field"><label htmlFor="stop-place-search">具体地点或地址（可选）</label><div className="place-search-input"><input id="stop-place-search" className="dialog-input" placeholder="例如：景点、酒店或机场名称" value={placeQuery} onChange={(event) => { setPlaceQuery(event.target.value); setPlaceResolved(false); setPlaceResults([]); setPlaceSearchAttempted(false); setPlaceSearchProvider(undefined); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void findPlaces(); } }} /><button type="button" onClick={() => void findPlaces()} disabled={!placeQuery.trim() || searchingPlace}><Search aria-hidden="true" />{searchingPlace ? "搜索中…" : "搜索地点"}</button></div>{placeResults.length > 0 && <div className="place-search-results" aria-label="具体地点搜索结果">{placeResults.map((place) => <button type="button" key={place.id} aria-label={`选择地点 ${place.name}`} onClick={() => selectPlace(place)}><Building2 aria-hidden="true" /><span><strong>{place.name}</strong><small>{place.address}</small></span></button>)}</div>}{placeQuery.trim() && !placeResolved && !searchingPlace && placeResults.length === 0 && <p className="field-hint">{placeSearchAttempted ? "没有找到匹配地点，请补充区县或道路名称后重试。" : "输入地点后点击“搜索地点”，从结果中选择以保存精确位置。"}</p>}{placeResolved && <p className="location-confirmed"><MapPin aria-hidden="true" />已定位具体地点：{draft.title}<small>{draft.address}</small></p>}<p className="place-attribution">{placeSearchProvider === "geoapify" ? "地点搜索结果由 Geoapify 提供" : placeSearchProvider === "nominatim" ? "地点搜索结果由 OpenStreetMap Nominatim 提供" : "地点搜索优先使用 Geoapify，未配置时自动回退至 OpenStreetMap Nominatim"}</p></div>}
       <label className="dialog-field">节点标题<input className="dialog-input" required value={draft.title} onChange={(event) => update("title", event.target.value)} placeholder="例如：京都站、酒店入住" /></label>
       <label className="dialog-field">日期<input className="dialog-input" required type="date" min={tripStartDate} max={tripEndDate} value={draft.date} onChange={(event) => updateDate(event.target.value)} /></label>
       {existingStops.some((item) => item.id !== stop?.id) && <label className="dialog-field dialog-wide">使用已有节点位置<select className="dialog-input" defaultValue="" onChange={(event) => { const source = existingStops.find((item) => item.id === event.target.value); if (source) copyLocation(source); }}><option value="">选择已有节点</option>{existingStops.filter((item) => item.id !== stop?.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>}

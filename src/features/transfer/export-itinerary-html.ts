@@ -2,7 +2,7 @@ import type { PackingItem, Stop, Trip } from "../../domain/models";
 import { tripDates } from "../../domain/dates";
 import { getPackingItems, getStops } from "../../db/trip-repository";
 
-const escapeHtml = (value: string | undefined) => (value ?? "").replace(/[&<>\"']/g, (character) => ({
+const escapeHtml = (value: string | undefined) => (value ?? "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
 })[character] ?? character);
 
@@ -47,7 +47,7 @@ export async function downloadItineraryHtml(trip: Trip) {
   const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${trip.title.replace(/[\\/:*?\"<>|]/g, "-") || "行程"}-行程单.html`;
+  link.download = `${trip.title.replace(/[\\/:*?"<>|]/g, "-") || "行程"}-行程单.html`;
   link.click();
   URL.revokeObjectURL(url);
 }

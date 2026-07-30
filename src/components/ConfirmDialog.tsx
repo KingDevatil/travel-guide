@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useDialogAccessibility } from "../hooks/useDialogAccessibility";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -11,16 +12,7 @@ interface ConfirmDialogProps {
 
 export function ConfirmDialog({ open, title, message, confirmLabel = "确认", onConfirm, onClose }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    returnFocusRef.current = document.activeElement as HTMLElement | null;
-    confirmRef.current?.focus();
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); if (event.key === "Tab" && panelRef.current) { const buttons = [...panelRef.current.querySelectorAll<HTMLButtonElement>("button:not([disabled])")]; if (!buttons.length) return; const first = buttons[0]; const last = buttons[buttons.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => { document.removeEventListener("keydown", closeOnEscape); returnFocusRef.current?.focus(); };
-  }, [open, onClose]);
+  const panelRef = useDialogAccessibility<HTMLElement>(open, onClose);
   if (!open) return null;
   return <div className="dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-title" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <section ref={panelRef} className="dialog-panel confirm-dialog">

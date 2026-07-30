@@ -1,11 +1,55 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../src/App";
 import { db } from "../src/db/travel-db";
+import { clearPlaceSearchCaches } from "../src/services/place-search";
+
+async function openItineraryManager(user: ReturnType<typeof userEvent.setup>) {
+  const buttons = await screen.findAllByRole("button", { name: "管理安排" });
+  await user.click(buttons[0]);
+  return screen.getByRole("dialog", { name: "管理安排" });
+}
 
 describe("App", () => {
   beforeEach(async () => {
+    clearPlaceSearchCaches();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://localhost");
+      const text = url.searchParams.get("text");
+      const places: Record<string, Record<string, unknown>> = {
+        外滩: {
+          place_id: "geo-bund",
+          name: "外滩",
+          formatted: "上海市黄浦区中山东一路，中国",
+          lat: 31.24,
+          lon: 121.4907,
+        },
+        浦东机场: {
+          place_id: "geo-pvg",
+          name: "上海浦东国际机场",
+          formatted: "上海市浦东新区迎宾大道6000号，中国",
+          lat: 31.1443,
+          lon: 121.8083,
+          category: "airport.international",
+        },
+        素万那普机场: {
+          place_id: "geo-bkk",
+          name: "素万那普国际机场",
+          formatted: "999 Nong Prue, Bang Phli District, Samut Prakan 10540, Thailand",
+          lat: 13.69,
+          lon: 100.7501,
+          category: "airport.international",
+        },
+      };
+      if (url.pathname === "/api/geoapify/geocode") {
+        return new Response(JSON.stringify({ results: text && places[text] ? [places[text]] : [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
     localStorage.clear();
     await db.delete();
     await db.open();
@@ -21,6 +65,19 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "新建行程" })).toBeInTheDocument();
     expect(screen.queryByText("日本关西 6 日")).not.toBeInTheDocument();
     expect(await db.trips.count()).toBe(0);
+  });
+
+  it("keeps archived trips recoverable when no active trip remains", async () => {
+    const trip = await db.trips.get("starter-test-trip");
+    await db.trips.put({ ...trip!, archivedAt: new Date().toISOString() });
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "所有行程都已归档" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "管理已归档行程" }));
+    const manager = screen.getByRole("dialog", { name: "我的行程" });
+    await user.click(within(manager).getByRole("button", { name: "恢复" }));
+    expect((await screen.findAllByText("日本关西 6 日")).length).toBeGreaterThan(0);
   });
 
   it("renders the selected persisted trip", async () => {
@@ -41,7 +98,8 @@ describe("App", () => {
   it("explains how to unlock transport instead of showing a dead control", async () => {
     const user = userEvent.setup();
     render(<App />);
-    const addTransport = await screen.findByRole("button", { name: "添加交通" });
+    const manager = await openItineraryManager(user);
+    const addTransport = within(manager).getByRole("button", { name: "添加交通" });
     expect(addTransport).toBeEnabled();
     await user.click(addTransport);
     expect(screen.getByRole("status")).toHaveTextContent("先添加出发地和目的地两个节点");
@@ -51,7 +109,8 @@ describe("App", () => {
   it("searches cities, adds two nodes, and connects them with transport", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "添加节点" }));
+    const manager = await openItineraryManager(user);
+    await user.click(within(manager).getByRole("button", { name: "添加节点" }));
     const dialog = screen.getByRole("dialog", { name: "添加节点" });
     expect(within(dialog).queryByLabelText("纬度（WGS84）")).not.toBeInTheDocument();
     const stopDate = within(dialog).getByLabelText("日期");
@@ -67,19 +126,22 @@ describe("App", () => {
     expect(startsAt).toHaveValue("2025-10-14T09:00");
     expect(endsAt).toHaveValue("2025-10-14T10:00");
     await user.type(within(dialog).getByLabelText("所在城市"), "京都");
+    expect(within(dialog).queryByRole("button", { name: "选择 京都，日本" })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "搜索城市" }));
     await user.click(await within(dialog).findByRole("button", { name: "选择 京都，日本" }));
     await user.click(within(dialog).getByRole("button", { name: "保存节点" }));
-    expect(await screen.findByText("京都")).toBeInTheDocument();
+    expect(await within(manager).findByText("京都")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "添加节点" }));
+    await user.click(within(manager).getByRole("button", { name: "添加节点" }));
     const secondDialog = screen.getByRole("dialog", { name: "添加节点" });
     await user.type(within(secondDialog).getByLabelText("所在城市"), "大阪");
+    await user.click(within(secondDialog).getByRole("button", { name: "搜索城市" }));
     await user.click(await within(secondDialog).findByRole("button", { name: "选择 大阪，日本" }));
     expect(within(secondDialog).getByLabelText("具体地点或地址（可选）")).toHaveAttribute("placeholder", "例如：景点、酒店或机场名称");
     expect(within(secondDialog).queryByPlaceholderText("例如：大阪外滩、酒店、机场")).not.toBeInTheDocument();
     await user.click(within(secondDialog).getByRole("button", { name: "保存节点" }));
 
-    await user.click(await screen.findByRole("button", { name: "添加交通" }));
+    await user.click(await within(manager).findByRole("button", { name: "添加交通" }));
     const legDialog = screen.getByRole("dialog", { name: "添加交通" });
     await user.click(within(legDialog).getByRole("button", { name: "保存" }));
 
@@ -93,18 +155,23 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: "添加节点" }));
+    const manager = await openItineraryManager(user);
+    await user.click(within(manager).getByRole("button", { name: "添加节点" }));
     let dialog = screen.getByRole("dialog", { name: "添加节点" });
     await user.type(within(dialog).getByLabelText("所在城市"), "上海");
+    await user.click(within(dialog).getByRole("button", { name: "搜索城市" }));
     await user.click(within(dialog).getByRole("button", { name: "选择 上海，中国" }));
     await user.type(within(dialog).getByLabelText("具体地点或地址（可选）"), "外滩");
+    expect(within(dialog).queryByRole("button", { name: "选择地点 外滩" })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "搜索地点" }));
+    expect(await within(dialog).findByText("地点搜索结果由 Geoapify 提供")).toBeInTheDocument();
     await user.click(await within(dialog).findByRole("button", { name: "选择地点 外滩" }));
     await user.click(within(dialog).getByRole("button", { name: "保存节点" }));
 
-    await user.click(screen.getByRole("button", { name: "添加节点" }));
+    await user.click(within(manager).getByRole("button", { name: "添加节点" }));
     dialog = screen.getByRole("dialog", { name: "添加节点" });
     await user.type(within(dialog).getByLabelText("所在城市"), "上海");
+    await user.click(within(dialog).getByRole("button", { name: "搜索城市" }));
     await user.click(within(dialog).getByRole("button", { name: "选择 上海，中国" }));
     await user.type(within(dialog).getByLabelText("具体地点或地址（可选）"), "浦东机场");
     await user.click(within(dialog).getByRole("button", { name: "搜索地点" }));
@@ -122,12 +189,14 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: "添加节点" }));
+    const manager = await openItineraryManager(user);
+    await user.click(within(manager).getByRole("button", { name: "添加节点" }));
     let dialog = screen.getByRole("dialog", { name: "添加节点" });
     expect(within(dialog).getByLabelText("使用节点当地时间")).toBeChecked();
     expect(within(dialog).getByLabelText("节点时区")).toHaveValue("Asia/Tokyo");
 
     await user.type(within(dialog).getByLabelText("所在城市"), "曼谷");
+    await user.click(within(dialog).getByRole("button", { name: "搜索城市" }));
     await user.click(within(dialog).getByRole("button", { name: "选择 曼谷，泰国" }));
     expect(within(dialog).getByLabelText("节点时区")).toHaveValue("Asia/Bangkok");
     expect(within(dialog).getByText("Asia/Bangkok（UTC+07:00）")).toBeInTheDocument();
@@ -135,9 +204,9 @@ describe("App", () => {
 
     let stop = (await db.stops.toArray())[0];
     expect(stop).toMatchObject({ city: "曼谷", timezone: "Asia/Bangkok", startsAt: "2025-10-12T09:00" });
-    expect(await screen.findByText(/当地时间 Asia\/Bangkok/)).toBeInTheDocument();
+    expect(await within(manager).findByText(/当地时间 Asia\/Bangkok/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.click(within(manager).getByRole("button", { name: "编辑" }));
     dialog = screen.getByRole("dialog", { name: "编辑节点" });
     await user.click(within(dialog).getByLabelText("使用节点当地时间"));
     expect(within(dialog).queryByLabelText("节点时区")).not.toBeInTheDocument();
@@ -145,7 +214,7 @@ describe("App", () => {
 
     stop = (await db.stops.toArray())[0];
     expect(stop.timezone).toBeUndefined();
-    expect(await screen.findByText("09:00—10:00 · 行程时区 Asia/Tokyo")).toBeInTheDocument();
+    expect(await within(manager).findByText("09:00—10:00 · 行程时区 Asia/Tokyo")).toBeInTheDocument();
   });
 
   it("merges a multi-day node instead of rendering covered days as empty", async () => {
@@ -164,9 +233,11 @@ describe("App", () => {
       timezone: "Asia/Tokyo",
     });
 
+    const user = userEvent.setup();
     render(<App />);
 
-    const timeline = await screen.findByLabelText("行程节点管理");
+    const manager = await openItineraryManager(user);
+    const timeline = within(manager).getByLabelText("行程节点管理");
     expect(await within(timeline).findByRole("heading", { name: "2025-10-12 至 2025-10-15" })).toBeInTheDocument();
     expect(within(timeline).getByText(/2025-10-12 09:00—2025-10-15 10:00/)).toBeInTheDocument();
     expect(within(timeline).queryByRole("heading", { name: "2025-10-13" })).not.toBeInTheDocument();
@@ -179,9 +250,11 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: "添加节点" }));
+    const manager = await openItineraryManager(user);
+    await user.click(within(manager).getByRole("button", { name: "添加节点" }));
     const dialog = screen.getByRole("dialog", { name: "添加节点" });
     await user.type(within(dialog).getByLabelText("所在城市"), "曼谷");
+    await user.click(within(dialog).getByRole("button", { name: "搜索城市" }));
     await user.click(within(dialog).getByRole("button", { name: "选择 曼谷，泰国" }));
     await user.type(within(dialog).getByLabelText("具体地点或地址（可选）"), "素万那普机场");
     await user.click(within(dialog).getByRole("button", { name: "搜索地点" }));

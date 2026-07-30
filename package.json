@@ -3,9 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/build-sites-worker.mjs && node scripts/verify-sites-worker.mjs",
+    "check:secrets": "node scripts/check-secret-safety.mjs",
+    "build": "npm run check:secrets && tsc -b && vite build && node scripts/build-sites-worker.mjs && node scripts/verify-sites-worker.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",

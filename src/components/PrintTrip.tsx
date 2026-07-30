@@ -4,10 +4,22 @@ import { getExpenses, getLegs, getPackingItems, getStops } from "../db/trip-repo
 import { formatMoney } from "../domain/money";
 import { tripDates } from "../domain/dates";
 import { formatScheduledTimeRange, formatTimezoneLabel } from "../domain/timezones";
+import { subscribeTripChanges } from "../db/change-events";
 
 export function PrintTrip({ trip }: { trip: Trip }) {
   const [stops, setStops] = useState<Stop[]>([]); const [legs, setLegs] = useState<Leg[]>([]); const [expenses, setExpenses] = useState<Expense[]>([]); const [packing, setPacking] = useState<PackingItem[]>([]);
   const load = useCallback(async () => { const [s, l, e, p] = await Promise.all([getStops(trip.id), getLegs(trip.id), getExpenses(trip.id), getPackingItems(trip.id)]); setStops(s); setLegs(l); setExpenses(e); setPacking(p); }, [trip.id]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    const onBeforePrint = () => { void load(); };
+    window.addEventListener("beforeprint", onBeforePrint);
+    const unsubscribe = subscribeTripChanges((changedTripId) => {
+      if (changedTripId === trip.id) void load();
+    });
+    return () => {
+      window.removeEventListener("beforeprint", onBeforePrint);
+      unsubscribe();
+    };
+  }, [load, trip.id]);
   return <article className="print-trip"><h1>{trip.title}</h1><p>{trip.startDate} 至 {trip.endDate} · {trip.timezone}</p>{tripDates(trip.startDate, trip.endDate).map((date) => <section key={date}><h2>{date}</h2>{stops.filter((stop) => stop.date === date).map((stop) => <div key={stop.id}><strong>{stop.startsAt ? formatScheduledTimeRange(stop.startsAt, stop.endsAt) : ""} {stop.title}</strong><p>{stop.city} {stop.timezone ? `· 当地时间 ${formatTimezoneLabel(stop.timezone, stop.date)}` : `· 行程时区 ${trip.timezone}`} {stop.content} {stop.notes}</p></div>)}</section>)}{legs.length > 0 && <section><h2>交通</h2>{legs.map((leg) => <p key={leg.id}>{stops.find((stop) => stop.id === leg.fromStopId)?.title} → {stops.find((stop) => stop.id === leg.toStopId)?.title} · {leg.mode} {leg.serviceNumber}</p>)}</section>}<section><h2>预算摘要</h2>{expenses.filter((expense) => expense.status !== "cancelled").map((expense) => <p key={expense.id}>{expense.title}：{formatMoney(expense.amountMinor, expense.currency)}（{expense.status}）</p>)}</section><section><h2>行李清单</h2>{packing.map((item) => <p key={item.id}>□ {item.title} × {item.quantity}{item.required ? "（必需）" : ""}</p>)}</section></article>;
 }

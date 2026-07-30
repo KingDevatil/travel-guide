@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Leg, Stop } from "../domain/models";
-import { addExpense, addLeg, addStop, deleteLeg, deleteStop, getLegs, getStops, reorderStops, updateLeg, updateStop } from "../db/trip-repository";
+import { subscribeTripChanges } from "../db/change-events";
+import { addExpense, addLeg, addStop, deleteLeg, deleteStop, getExpenses, getLegs, getStops, reorderStops, updateExpense, updateLeg, updateStop } from "../db/trip-repository";
 
 export type StopDraft = Omit<Stop, "id" | "tripId" | "sortOrder">;
 export type LegDraft = Omit<Leg, "id" | "tripId"> & { expenseAmountMinor?: number; expenseCurrency?: string };
@@ -15,7 +16,12 @@ export function useItinerary(tripId?: string) {
     const [nextStops, nextLegs] = await Promise.all([getStops(tripId), getLegs(tripId)]);
     setStops(nextStops); setLegs(nextLegs); setLoading(false);
   }, [tripId]);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+    return subscribeTripChanges((changedTripId) => {
+      if (changedTripId === tripId) void refresh();
+    });
+  }, [refresh, tripId]);
   const saveStop = useCallback(async (draft: StopDraft, current?: Stop) => {
     if (!tripId) throw new Error("请选择行程");
     if (draft.endsAt && draft.startsAt && draft.endsAt < draft.startsAt) throw new Error("结束时间不能早于开始时间");
@@ -29,7 +35,33 @@ export function useItinerary(tripId?: string) {
     if (draft.arrivesAt && draft.departsAt && draft.arrivesAt < draft.departsAt) throw new Error("到达时间不能早于出发时间");
     const { expenseAmountMinor, expenseCurrency, ...legDraft } = draft;
     const leg: Leg = current ? { ...current, ...legDraft } : { ...legDraft, id: crypto.randomUUID(), tripId };
-    if (expenseAmountMinor && expenseCurrency) { const now = new Date().toISOString(); const expenseId = current?.expenseId ?? crypto.randomUUID(); leg.expenseId = expenseId; await addExpense({ id: expenseId, tripId, title: `交通：${leg.serviceNumber || leg.mode}`, amountMinor: expenseAmountMinor, currency: expenseCurrency, status: "planned", category: "交通", beneficiaryParticipantIds: [], splitMethod: "equal", splitValues: {}, legId: leg.id, createdAt: now, updatedAt: now }); }
+    if (expenseAmountMinor !== undefined && expenseCurrency) {
+      const now = new Date().toISOString();
+      const expenseId = current?.expenseId ?? crypto.randomUUID();
+      const existingExpense = current?.expenseId
+        ? (await getExpenses(tripId)).find((expense) => expense.id === current.expenseId)
+        : undefined;
+      leg.expenseId = expenseId;
+      const expense = {
+        id: expenseId,
+        tripId,
+        title: `交通：${leg.serviceNumber || leg.mode}`,
+        amountMinor: expenseAmountMinor,
+        currency: expenseCurrency,
+        status: "planned" as const,
+        category: "交通",
+        beneficiaryParticipantIds: existingExpense?.beneficiaryParticipantIds ?? [],
+        splitMethod: existingExpense?.splitMethod ?? "equal" as const,
+        splitValues: existingExpense?.splitValues ?? {},
+        legId: leg.id,
+        payerParticipantId: existingExpense?.payerParticipantId,
+        notes: existingExpense?.notes,
+        createdAt: existingExpense?.createdAt ?? now,
+        updatedAt: now,
+      };
+      if (existingExpense) await updateExpense(expense);
+      else await addExpense(expense);
+    }
     if (current) await updateLeg(leg); else await addLeg(leg);
     await refresh();
   }, [refresh, tripId]);

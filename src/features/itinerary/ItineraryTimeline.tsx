@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { MapPin, Route } from "lucide-react";
-import type { Trip, Stop } from "../../domain/models";
+import type { Leg, Trip, Stop } from "../../domain/models";
 import { useItinerary } from "../../hooks/useItinerary";
 import { StopEditor } from "./StopEditor";
 import { LegEditor } from "./LegEditor";
@@ -20,6 +20,7 @@ export function ItineraryTimeline({ trip, showMap = false }: { trip: Trip; showM
   const [editingStop, setEditingStop] = useState<Stop | null | undefined>();
   const [editingLegId, setEditingLegId] = useState<string | null | undefined>();
   const [pendingDelete, setPendingDelete] = useState<Stop>();
+  const [pendingLegDelete, setPendingLegDelete] = useState<Leg>();
   const [guidance, setGuidance] = useState("");
   const dates = useMemo(() => tripDates(trip.startDate, trip.endDate), [trip.endDate, trip.startDate]);
 
@@ -45,10 +46,11 @@ export function ItineraryTimeline({ trip, showMap = false }: { trip: Trip; showM
       const dateLabel = onlyStopEndDate > date ? `${date} 至 ${onlyStopEndDate}` : date;
       return <div className="data-timeline__day" key={date}><h4>{dateLabel}</h4>{dayStops.length === 0 ? <p className="empty-day">暂无安排</p> : dayStops.map((stop, index) => <article className="data-timeline__stop" key={stop.id}><div><strong>{stop.title}</strong><span>{stop.address || [stop.city, stop.country].filter(Boolean).join("，") || "地图选点"}</span>{stop.address && <span>{[stop.city, stop.country].filter(Boolean).join("，")}</span>}{stop.startsAt && <span>{formatScheduledTimeRange(stop.startsAt, stop.endsAt)} · {stop.timezone ? `当地时间 ${formatTimezoneLabel(stop.timezone, stop.date)}` : `行程时区 ${trip.timezone}`}</span>}</div><div><button onClick={() => setEditingStop(stop)}>编辑</button><button disabled={index === 0} onClick={() => void moveStop(stop, -1)}>上移</button><button disabled={index === dayStops.length - 1} onClick={() => void moveStop(stop, 1)}>下移</button><button onClick={() => setPendingDelete(stop)}>删除</button></div></article>)}</div>;
     })}
-    {legs.length > 0 && <section className="data-timeline__legs"><h4>交通段</h4>{legs.map((leg) => <div key={leg.id}><span>{stops.find((stop) => stop.id === leg.fromStopId)?.title} → {stops.find((stop) => stop.id === leg.toStopId)?.title} · {transportLabels[leg.mode]}</span><button onClick={() => setEditingLegId(leg.id)}>编辑</button><button onClick={() => void deleteLeg(leg.id)}>删除</button></div>)}</section>}
+    {legs.length > 0 && <section className="data-timeline__legs"><h4>交通段</h4>{legs.map((leg) => <div key={leg.id}><span>{stops.find((stop) => stop.id === leg.fromStopId)?.title} → {stops.find((stop) => stop.id === leg.toStopId)?.title} · {transportLabels[leg.mode]}</span><button onClick={() => setEditingLegId(leg.id)}>编辑</button><button onClick={() => setPendingLegDelete(leg)}>删除</button></div>)}</section>}
     {showMap && <Suspense fallback={<p>正在加载地图…</p>}><TripMap stops={stops} legs={legs} onSelectStop={(id) => setEditingStop(stops.find((stop) => stop.id === id))} /></Suspense>}
     {editingStop !== undefined && <StopEditor stop={editingStop ?? undefined} date={trip.startDate} tripStartDate={trip.startDate} tripEndDate={trip.endDate} tripTimezone={trip.timezone} existingStops={stops} onSave={(draft) => saveStop(draft, editingStop ?? undefined)} onClose={() => setEditingStop(undefined)} />}
     {editingLegId !== undefined && <LegEditor leg={editingLegId ? legs.find((leg) => leg.id === editingLegId) : undefined} stops={stops} currency={trip.defaultCurrency} onSave={(draft) => saveLeg(draft, editingLegId ? legs.find((leg) => leg.id === editingLegId) : undefined)} onClose={() => setEditingLegId(undefined)} />}
     <ConfirmDialog open={Boolean(pendingDelete)} title="删除节点？" message="该节点关联的交通段会一并删除；关联消费会保留但不再关联该节点。" confirmLabel="删除节点" onClose={() => setPendingDelete(undefined)} onConfirm={() => { if (pendingDelete) void deleteStop(pendingDelete.id).then(() => setPendingDelete(undefined)); }} />
+    <ConfirmDialog open={Boolean(pendingLegDelete)} title="删除交通段？" message="交通段会被删除；关联消费会保留，但不再关联这段交通。" confirmLabel="删除交通" onClose={() => setPendingLegDelete(undefined)} onConfirm={() => { if (pendingLegDelete) void deleteLeg(pendingLegDelete.id).then(() => setPendingLegDelete(undefined)); }} />
   </section>;
 }

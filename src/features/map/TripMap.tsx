@@ -6,7 +6,7 @@ import { itineraryGeoJson } from "./geojson";
 import { mapStyle } from "./map-style";
 import { mapViewportForStops } from "./viewport";
 
-interface TripMapProps { stops: Stop[]; legs: Leg[]; day?: string; selectedStopId?: string; onSelectStop?: (id: string) => void; onPickCoordinates?: (coordinates: { latitude: number; longitude: number }) => void; }
+export interface TripMapProps { stops: Stop[]; legs: Leg[]; day?: string; selectedStopId?: string; fitRequest?: number; onSelectStop?: (id: string) => void; onPickCoordinates?: (coordinates: { latitude: number; longitude: number }) => void; }
 
 function focusMap(map: maplibregl.Map, stops: Stop[], day?: string, selectedStopId?: string) {
   const selectedStop = selectedStopId ? stops.find((stop) => stop.id === selectedStopId) : undefined;
@@ -23,13 +23,14 @@ function focusMap(map: maplibregl.Map, stops: Stop[], day?: string, selectedStop
   map.fitBounds(viewport.bounds, { padding: 64, maxZoom: viewport.maxZoom });
 }
 
-export function TripMap({ stops, legs, day, selectedStopId, onSelectStop, onPickCoordinates }: TripMapProps) {
+export function TripMap({ stops, legs, day, selectedStopId, fitRequest = 0, onSelectStop, onPickCoordinates }: TripMapProps) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const dataRef = useRef({ stops, legs, day, selectedStopId });
   const onSelectStopRef = useRef(onSelectStop);
   const onPickCoordinatesRef = useRef(onPickCoordinates);
   const [failed, setFailed] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   dataRef.current = { stops, legs, day, selectedStopId };
   onSelectStopRef.current = onSelectStop;
   onPickCoordinatesRef.current = onPickCoordinates;
@@ -48,7 +49,11 @@ export function TripMap({ stops, legs, day, selectedStopId, onSelectStop, onPick
     map.on("load", () => {
       const current = dataRef.current;
       map.addSource("itinerary", { type: "geojson", data: itineraryGeoJson(current.stops, current.legs, current.day) });
-      map.addLayer({ id: "legs", type: "line", source: "itinerary", filter: ["==", "$type", "LineString"], paint: { "line-color": "#12335f", "line-width": 3, "line-dasharray": [2, 1] } });
+      map.addLayer({ id: "legs", type: "line", source: "itinerary", filter: ["==", "$type", "LineString"], paint: {
+        "line-color": ["match", ["get", "mode"], "walk", "#278646", "bike", "#278646", "bus", "#e87917", "metro", "#8b5cf6", "taxi", "#f59e0b", "drive", "#12335f", "train", "#2563eb", "highSpeedRail", "#dc2626", "flight", "#0891b2", "ferry", "#0d9488", "#53627a"],
+        "line-width": 4,
+        "line-dasharray": ["match", ["get", "mode"], "walk", ["literal", [1, 1.5]], "bike", ["literal", [1, 1]], "flight", ["literal", [3, 2]], ["literal", [1, 0]]],
+      } });
       map.addLayer({ id: "stops", type: "circle", source: "itinerary", filter: ["==", "$type", "Point"], paint: { "circle-color": "#ff5a36", "circle-radius": 7, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
       map.on("click", "stops", (event) => { const id = event.features?.[0]?.properties?.id; if (id) onSelectStopRef.current?.(id); });
       map.on("click", (event) => onPickCoordinatesRef.current?.({ latitude: event.lngLat.lat, longitude: event.lngLat.lng }));
@@ -56,7 +61,7 @@ export function TripMap({ stops, legs, day, selectedStopId, onSelectStop, onPick
     });
     mapRef.current = map;
     return () => { map.remove(); mapRef.current = null; };
-  }, []);
+  }, [retryKey]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -64,7 +69,7 @@ export function TripMap({ stops, legs, day, selectedStopId, onSelectStop, onPick
     const source = map.getSource("itinerary") as maplibregl.GeoJSONSource | undefined;
     source?.setData(itineraryGeoJson(stops, legs, day));
     focusMap(map, stops, day, selectedStopId);
-  }, [day, legs, selectedStopId, stops]);
-  if (failed) return <div className="trip-map__fallback"><p>地图暂时不可用，但行程节点仍可编辑。</p><button onClick={() => { setFailed(false); mapRef.current?.setStyle(mapStyle); }}>重试地图</button></div>;
+  }, [day, fitRequest, legs, selectedStopId, stops]);
+  if (failed) return <div className="trip-map__fallback"><p>地图暂时不可用，但行程节点仍可编辑。</p><button onClick={() => { setFailed(false); setRetryKey((value) => value + 1); }}>重试地图</button></div>;
   return <div className="trip-map" ref={host} aria-label="行程地图" />;
 }

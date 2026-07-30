@@ -28,4 +28,10 @@ describe("global WGS84 map data", () => {
     expect(itineraryGeoJson([], []).features).toEqual([]);
     expect(itineraryGeoJson(stops.slice(0, 1), []).features).toHaveLength(1);
   });
+
+  it("uses a stored route geometry when a transport segment provides one", () => {
+    const routeGeoJson = { type: "LineString" as const, coordinates: [[139.6503, 35.6762], [80, 45], [2.3522, 48.8566]] };
+    const result = itineraryGeoJson(stops, [{ ...legs[0], routeGeoJson }]);
+    expect(result.features.find((feature) => feature.properties?.id === "flight")?.geometry).toEqual(routeGeoJson);
+  });
 });

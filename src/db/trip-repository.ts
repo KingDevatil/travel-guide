@@ -7,6 +7,7 @@ import type {
   Expense,
   PackingItem,
 } from "../domain/models";
+import { notifyTripChanged } from "./change-events";
 
 // ---------------------------------------------------------------------------
 // Trip CRUD
@@ -14,6 +15,7 @@ import type {
 
 export async function createTrip(trip: Trip): Promise<string> {
   await db.trips.add(trip);
+  notifyTripChanged(trip.id);
   return trip.id;
 }
 
@@ -23,6 +25,7 @@ export async function getTrip(id: string): Promise<Trip | undefined> {
 
 export async function updateTrip(trip: Trip): Promise<void> {
   await db.trips.put(trip);
+  notifyTripChanged(trip.id);
 }
 
 export async function deleteTrip(id: string): Promise<void> {
@@ -38,6 +41,7 @@ export async function deleteTrip(id: string): Promise<void> {
       await db.packingItems.where("tripId").equals(id).delete();
     },
   );
+  notifyTripChanged(id);
 }
 
 export async function listTrips(options?: {
@@ -52,10 +56,12 @@ export async function listTrips(options?: {
 
 export async function archiveTrip(id: string): Promise<void> {
   await db.trips.update(id, { archivedAt: new Date().toISOString() });
+  notifyTripChanged(id);
 }
 
 export async function restoreTrip(id: string): Promise<void> {
   await db.trips.update(id, { archivedAt: undefined, updatedAt: new Date().toISOString() });
+  notifyTripChanged(id);
 }
 
 export async function duplicateTrip(
@@ -149,6 +155,7 @@ export async function duplicateTrip(
     },
   );
 
+  notifyTripChanged(newId);
   return newId;
 }
 
@@ -166,16 +173,20 @@ export async function addParticipant(p: Participant): Promise<void> {
     const trip = await db.trips.get(p.tripId);
     if (trip && !trip.participantIds.includes(p.id)) await db.trips.update(p.tripId, { participantIds: [...trip.participantIds, p.id], updatedAt: new Date().toISOString() });
   });
+  notifyTripChanged(p.tripId);
 }
 
 export async function updateParticipant(p: Participant): Promise<void> {
   await db.participants.put(p);
+  notifyTripChanged(p.tripId);
 }
 
 export async function deleteParticipant(id: string): Promise<void> {
+  let tripId: string | undefined;
   await db.transaction("rw", [db.participants, db.trips, db.expenses], async () => {
     const participant = await db.participants.get(id);
     if (!participant) return;
+    tripId = participant.tripId;
     await db.participants.delete(id);
     const trip = await db.trips.get(participant.tripId);
     if (trip) await db.trips.update(trip.id, { participantIds: trip.participantIds.filter((value) => value !== id), updatedAt: new Date().toISOString() });
@@ -185,6 +196,7 @@ export async function deleteParticipant(id: string): Promise<void> {
       if (expense.beneficiaryParticipantIds.includes(id)) await db.expenses.update(expense.id, { beneficiaryParticipantIds: expense.beneficiaryParticipantIds.filter((value) => value !== id), splitValues: Object.fromEntries(Object.entries(expense.splitValues).filter(([key]) => key !== id)), updatedAt: new Date().toISOString() });
     }
   });
+  if (tripId) notifyTripChanged(tripId);
 }
 
 export async function copyPackingItems(sourceTripId: string, targetTripId: string): Promise<number> {
@@ -192,6 +204,7 @@ export async function copyPackingItems(sourceTripId: string, targetTripId: strin
   const existing = new Set(target.map((item) => `${item.category}\u0000${item.title}`));
   const additions = source.filter((item) => !existing.has(`${item.category}\u0000${item.title}`)).map((item, index) => ({ ...item, id: crypto.randomUUID(), tripId: targetTripId, packed: false, sortOrder: target.length + index }));
   if (additions.length) await db.packingItems.bulkAdd(additions);
+  if (additions.length) notifyTripChanged(targetTripId);
   return additions.length;
 }
 
@@ -212,28 +225,51 @@ export async function getStopsByDate(
 
 export async function addStop(stop: Stop): Promise<void> {
   await db.stops.add(stop);
+  notifyTripChanged(stop.tripId);
 }
 
 export async function updateStop(stop: Stop): Promise<void> {
   await db.stops.put(stop);
+  notifyTripChanged(stop.tripId);
 }
 
 export async function deleteStop(id: string): Promise<void> {
-  await db.transaction("rw", [db.stops, db.legs], async () => {
+  let tripId: string | undefined;
+  await db.transaction("rw", [db.stops, db.legs, db.expenses], async () => {
+    const stop = await db.stops.get(id);
+    if (!stop) return;
+    tripId = stop.tripId;
+    const legs = await db.legs
+      .where("tripId")
+      .equals(stop.tripId)
+      .filter((leg) => leg.fromStopId === id || leg.toStopId === id)
+      .toArray();
     await db.stops.delete(id);
-    await db.legs.where("fromStopId").equals(id).delete();
-    await db.legs.where("toStopId").equals(id).delete();
+    await db.legs.bulkDelete(legs.map((leg) => leg.id));
+    for (const leg of legs) {
+      if (leg.expenseId) {
+        await db.expenses.update(leg.expenseId, { legId: undefined, updatedAt: new Date().toISOString() });
+      }
+    }
+    const directlyLinked = await db.expenses.where("stopId").equals(id).toArray();
+    for (const expense of directlyLinked) {
+      await db.expenses.update(expense.id, { stopId: undefined, updatedAt: new Date().toISOString() });
+    }
   });
+  if (tripId) notifyTripChanged(tripId);
 }
 
 export async function reorderStops(
   stops: { id: string; sortOrder: number }[],
 ): Promise<void> {
+  let tripId: string | undefined;
   await db.transaction("rw", [db.stops], async () => {
+    tripId = stops[0] ? (await db.stops.get(stops[0].id))?.tripId : undefined;
     for (const s of stops) {
       await db.stops.update(s.id, { sortOrder: s.sortOrder });
     }
   });
+  if (tripId) notifyTripChanged(tripId);
 }
 
 // ---------------------------------------------------------------------------
@@ -246,14 +282,30 @@ export async function getLegs(tripId: string): Promise<Leg[]> {
 
 export async function addLeg(leg: Leg): Promise<void> {
   await db.legs.add(leg);
+  notifyTripChanged(leg.tripId);
 }
 
 export async function updateLeg(leg: Leg): Promise<void> {
   await db.legs.put(leg);
+  notifyTripChanged(leg.tripId);
 }
 
 export async function deleteLeg(id: string): Promise<void> {
-  await db.legs.delete(id);
+  let tripId: string | undefined;
+  await db.transaction("rw", [db.legs, db.expenses], async () => {
+    const leg = await db.legs.get(id);
+    if (!leg) return;
+    tripId = leg.tripId;
+    await db.legs.delete(id);
+    if (leg.expenseId) {
+      await db.expenses.update(leg.expenseId, { legId: undefined, updatedAt: new Date().toISOString() });
+    }
+    const directlyLinked = await db.expenses.where("tripId").equals(leg.tripId).filter((expense) => expense.legId === id).toArray();
+    for (const expense of directlyLinked) {
+      await db.expenses.update(expense.id, { legId: undefined, updatedAt: new Date().toISOString() });
+    }
+  });
+  if (tripId) notifyTripChanged(tripId);
 }
 
 // ---------------------------------------------------------------------------
@@ -272,15 +324,53 @@ export async function getExpenses(
 }
 
 export async function addExpense(expense: Expense): Promise<void> {
-  await db.expenses.add(expense);
+  await db.transaction("rw", [db.expenses, db.legs], async () => {
+    await db.expenses.add(expense);
+    if (!expense.legId) return;
+    const leg = await db.legs.get(expense.legId);
+    if (!leg || leg.tripId !== expense.tripId) return;
+    if (leg.expenseId && leg.expenseId !== expense.id) {
+      await db.expenses.update(leg.expenseId, { legId: undefined, updatedAt: new Date().toISOString() });
+    }
+    await db.legs.update(leg.id, { expenseId: expense.id });
+  });
+  notifyTripChanged(expense.tripId);
 }
 
 export async function updateExpense(expense: Expense): Promise<void> {
-  await db.expenses.put(expense);
+  await db.transaction("rw", [db.expenses, db.legs], async () => {
+    const previous = await db.expenses.get(expense.id);
+    if (previous?.legId && previous.legId !== expense.legId) {
+      const previousLeg = await db.legs.get(previous.legId);
+      if (previousLeg?.expenseId === expense.id) {
+        await db.legs.update(previousLeg.id, { expenseId: undefined });
+      }
+    }
+    await db.expenses.put(expense);
+    if (!expense.legId) return;
+    const leg = await db.legs.get(expense.legId);
+    if (!leg || leg.tripId !== expense.tripId) return;
+    if (leg.expenseId && leg.expenseId !== expense.id) {
+      await db.expenses.update(leg.expenseId, { legId: undefined, updatedAt: new Date().toISOString() });
+    }
+    await db.legs.update(leg.id, { expenseId: expense.id });
+  });
+  notifyTripChanged(expense.tripId);
 }
 
 export async function deleteExpense(id: string): Promise<void> {
-  await db.expenses.delete(id);
+  let tripId: string | undefined;
+  await db.transaction("rw", [db.expenses, db.legs], async () => {
+    const expense = await db.expenses.get(id);
+    if (!expense) return;
+    tripId = expense.tripId;
+    await db.expenses.delete(id);
+    const linkedLegs = await db.legs.where("tripId").equals(expense.tripId).filter((leg) => leg.expenseId === id).toArray();
+    for (const leg of linkedLegs) {
+      await db.legs.update(leg.id, { expenseId: undefined });
+    }
+  });
+  if (tripId) notifyTripChanged(tripId);
 }
 
 // ---------------------------------------------------------------------------
@@ -293,16 +383,24 @@ export async function getPackingItems(tripId: string): Promise<PackingItem[]> {
 
 export async function addPackingItem(item: PackingItem): Promise<void> {
   await db.packingItems.add(item);
+  notifyTripChanged(item.tripId);
 }
 
 export async function updatePackingItem(item: PackingItem): Promise<void> {
   await db.packingItems.put(item);
+  notifyTripChanged(item.tripId);
 }
 
 export async function deletePackingItem(id: string): Promise<void> {
+  const item = await db.packingItems.get(id);
+  if (!item) return;
   await db.packingItems.delete(id);
+  notifyTripChanged(item.tripId);
 }
 
 export async function bulkAddPackingItems(items: PackingItem[]): Promise<void> {
   await db.packingItems.bulkAdd(items);
+  for (const tripId of new Set(items.map((item) => item.tripId))) {
+    notifyTripChanged(tripId);
+  }
 }

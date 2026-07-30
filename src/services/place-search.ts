@@ -1,4 +1,12 @@
 import { cityCatalog } from "../data/cities";
+import { expandInfrastructureQueries } from "../data/infrastructure-terms";
+
+export type PlaceSearchProvider = "geoapify" | "nominatim";
+
+export interface SearchResultBatch<T> {
+  results: T[];
+  provider: PlaceSearchProvider;
+}
 
 export interface PlaceSearchResult {
   id: string;
@@ -6,6 +14,9 @@ export interface PlaceSearchResult {
   address: string;
   latitude: number;
   longitude: number;
+  category?: string;
+  resultType?: string;
+  confidence?: number;
 }
 
 export interface CitySearchResult {
@@ -16,36 +27,15 @@ export interface CitySearchResult {
   aliases: string[];
 }
 
-interface SearchPlacesInput {
+export interface SearchPlacesInput {
   query: string;
   city: string;
   country?: string;
   cityCoordinates?: { latitude: number; longitude: number };
 }
 
-const knownPlaces: Array<PlaceSearchResult & { city: string; aliases: string[] }> = [
-  { id: "shanghai-bund", city: "上海", name: "外滩", address: "上海市黄浦区中山东一路", latitude: 31.2400, longitude: 121.4907, aliases: ["上海外滩", "the bund", "bund"] },
-  { id: "shanghai-pvg", city: "上海", name: "上海浦东国际机场", address: "上海市浦东新区迎宾大道6000号", latitude: 31.1443, longitude: 121.8083, aliases: ["浦东机场", "pvg", "pudong airport"] },
-  { id: "shanghai-sha", city: "上海", name: "上海虹桥国际机场", address: "上海市长宁区虹桥路2550号", latitude: 31.1979, longitude: 121.3363, aliases: ["虹桥机场", "sha", "hongqiao airport"] },
-  { id: "shanghai-yuyuan", city: "上海", name: "豫园", address: "上海市黄浦区福佑路168号", latitude: 31.2270, longitude: 121.4921, aliases: ["上海豫园", "yu garden"] },
-  { id: "shanghai-disney", city: "上海", name: "上海迪士尼度假区", address: "上海市浦东新区川沙新镇黄赵路310号", latitude: 31.1440, longitude: 121.6570, aliases: ["上海迪士尼", "shanghai disney"] },
-  {
-    id: "bangkok-bkk",
-    city: "曼谷",
-    name: "素万那普国际机场",
-    address: "999 Nong Prue, Bang Phli District, Samut Prakan 10540, Thailand",
-    latitude: 13.6900,
-    longitude: 100.7501,
-    aliases: [
-      "素万那普机场",
-      "苏万那普国际机场",
-      "苏万那普机场",
-      "suvarnabhumi international airport",
-      "suvarnabhumi airport",
-      "bkk",
-    ],
-  },
-];
+const GEOAPIFY_PROXY_ENDPOINT = "/api/geoapify/geocode";
+const NOMINATIM_SEARCH_ENDPOINT = "https://nominatim.openstreetmap.org/search";
 
 const normalize = (value: string) => value.trim().toLocaleLowerCase().replace(/[\s'’.-]/g, "");
 
@@ -65,6 +55,13 @@ const countryCodes: Record<string, string> = {
   加拿大: "ca",
   阿联酋: "ae",
   土耳其: "tr",
+  荷兰: "nl",
+  德国: "de",
+  瑞士: "ch",
+  奥地利: "at",
+  马来西亚: "my",
+  菲律宾: "ph",
+  越南: "vn",
 };
 
 const cityCountryCodeOverrides: Record<string, string> = {
@@ -73,8 +70,34 @@ const cityCountryCodeOverrides: Record<string, string> = {
   台北: "tw",
 };
 
-export function buildPlaceSearchParams(input: SearchPlacesInput): URLSearchParams {
-  const city = cityCatalog.find((option) => option.name === input.city && (!input.country || option.country === input.country));
+function countryCodeFor(input: Pick<SearchPlacesInput, "city" | "country">) {
+  return cityCountryCodeOverrides[input.city] ?? (input.country ? countryCodes[input.country] : undefined);
+}
+
+function coordinatesFor(input: SearchPlacesInput) {
+  return cityCatalog.find((option) => option.name === input.city && (!input.country || option.country === input.country))
+    ?? input.cityCoordinates;
+}
+
+export function buildGeoapifySearchParams(input: SearchPlacesInput, type?: "city"): URLSearchParams {
+  const params = new URLSearchParams({
+    text: input.query.trim(),
+    format: "json",
+    lang: "zh",
+    limit: "6",
+  });
+  const countryCode = countryCodeFor(input);
+  if (countryCode) params.set("filter", `countrycode:${countryCode}`);
+
+  const coordinates = coordinatesFor(input);
+  if (coordinates) {
+    params.set("bias", `proximity:${coordinates.longitude},${coordinates.latitude}`);
+  }
+  if (type) params.set("type", type);
+  return params;
+}
+
+export function buildNominatimPlaceSearchParams(input: SearchPlacesInput): URLSearchParams {
   const params = new URLSearchParams({
     q: input.query.trim(),
     format: "jsonv2",
@@ -83,10 +106,10 @@ export function buildPlaceSearchParams(input: SearchPlacesInput): URLSearchParam
     "accept-language": "zh-CN,zh,en",
   });
 
-  const countryCode = cityCountryCodeOverrides[input.city] ?? (input.country ? countryCodes[input.country] : undefined);
+  const countryCode = countryCodeFor(input);
   if (countryCode) params.set("countrycodes", countryCode);
 
-  const coordinates = city ?? input.cityCoordinates;
+  const coordinates = coordinatesFor(input);
   if (coordinates) {
     const longitudeRadius = 1.5;
     const latitudeRadius = 1.5;
@@ -102,65 +125,226 @@ export function buildPlaceSearchParams(input: SearchPlacesInput): URLSearchParam
   return params;
 }
 
-export function searchKnownPlaces({ query, city }: SearchPlacesInput): PlaceSearchResult[] {
-  const target = normalize(query);
-  if (!target) return [];
-  return knownPlaces.filter((place) => place.city === city && [place.name, place.address, ...place.aliases].some((value) => normalize(value).includes(target) || target.includes(normalize(value)))).map(({ aliases: _aliases, city: _city, ...place }) => place);
-}
+export const buildPlaceSearchParams = buildNominatimPlaceSearchParams;
 
 let lastRemoteRequestAt = 0;
-const cache = new Map<string, PlaceSearchResult[]>();
-const cityCache = new Map<string, CitySearchResult[]>();
+const placeCache = new Map<string, SearchResultBatch<PlaceSearchResult>>();
+const cityCache = new Map<string, SearchResultBatch<CitySearchResult>>();
 
-async function waitForRemoteSearchSlot() {
+export function clearPlaceSearchCaches() {
+  placeCache.clear();
+  cityCache.clear();
+  lastRemoteRequestAt = 0;
+}
+
+async function waitForNominatimSlot(fetcher: typeof fetch) {
+  if (fetcher !== fetch) return;
   const remainingDelay = 1000 - (Date.now() - lastRemoteRequestAt);
   if (remainingDelay > 0) await new Promise((resolve) => setTimeout(resolve, remainingDelay));
   lastRemoteRequestAt = Date.now();
 }
 
-export async function searchCities(query: string, fetcher: typeof fetch = fetch): Promise<CitySearchResult[]> {
+interface GeoapifyPlace {
+  place_id?: string | number;
+  name?: string;
+  city?: string;
+  country?: string;
+  formatted?: string;
+  address_line1?: string;
+  address_line2?: string;
+  lat?: number | string;
+  lon?: number | string;
+  result_type?: string;
+  category?: string;
+  rank?: { confidence?: number };
+}
+
+interface NominatimPlace {
+  place_id: string | number;
+  name?: string;
+  display_name: string;
+  lat: string;
+  lon: string;
+  address?: {
+    city?: string;
+    town?: string;
+    village?: string;
+    municipality?: string;
+    county?: string;
+    state?: string;
+    country?: string;
+  };
+}
+
+function geoapifyPlaceResults(payload: unknown): PlaceSearchResult[] {
+  const places = (payload as { results?: GeoapifyPlace[] } | undefined)?.results;
+  if (!Array.isArray(places)) return [];
+  return places.map((place) => {
+    const latitude = Number(place.lat);
+    const longitude = Number(place.lon);
+    const address = place.formatted
+      ?? [place.address_line1, place.address_line2].filter(Boolean).join(", ");
+    return {
+      id: String(place.place_id ?? `${latitude},${longitude}`),
+      name: place.name?.trim() || place.address_line1?.trim() || address.split(",")[0].trim(),
+      address,
+      latitude,
+      longitude,
+      category: place.category,
+      resultType: place.result_type,
+      confidence: place.rank?.confidence,
+    };
+  }).filter((place) => place.name && Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
+}
+
+function geoapifyCityResults(payload: unknown): CitySearchResult[] {
+  const places = (payload as { results?: GeoapifyPlace[] } | undefined)?.results;
+  if (!Array.isArray(places)) return [];
+  return places.map((place) => ({
+    name: place.name?.trim()
+      || place.city?.trim()
+      || place.formatted?.split(",")[0].trim()
+      || "",
+    country: place.country?.trim() || "未标注国家",
+    latitude: Number(place.lat),
+    longitude: Number(place.lon),
+    aliases: [],
+  })).filter((city) => city.name && Number.isFinite(city.latitude) && Number.isFinite(city.longitude));
+}
+
+function nominatimPlaceResults(payload: unknown): PlaceSearchResult[] {
+  if (!Array.isArray(payload)) return [];
+  return (payload as NominatimPlace[]).map((place) => ({
+    id: String(place.place_id),
+    name: place.name?.trim() || place.display_name.split(",")[0].trim(),
+    address: place.display_name,
+    latitude: Number(place.lat),
+    longitude: Number(place.lon),
+  })).filter((place) => place.name && Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
+}
+
+function nominatimCityResults(payload: unknown): CitySearchResult[] {
+  if (!Array.isArray(payload)) return [];
+  return (payload as NominatimPlace[]).map((place) => {
+    const address = place.address;
+    return {
+      name: place.name?.trim()
+        || address?.city
+        || address?.town
+        || address?.village
+        || address?.municipality
+        || place.display_name.split(",")[0].trim(),
+      country: address?.country || "未标注国家",
+      latitude: Number(place.lat),
+      longitude: Number(place.lon),
+      aliases: [],
+    };
+  }).filter((city) => city.name && Number.isFinite(city.latitude) && Number.isFinite(city.longitude));
+}
+
+async function requestGeoapify(
+  params: URLSearchParams,
+  fetcher: typeof fetch,
+): Promise<{ available: boolean; payload?: unknown }> {
+  try {
+    const response = await fetcher(`${GEOAPIFY_PROXY_ENDPOINT}?${params.toString()}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return { available: false };
+    return { available: true, payload: await response.json() };
+  } catch {
+    return { available: false };
+  }
+}
+
+async function requestNominatim(params: URLSearchParams, fetcher: typeof fetch): Promise<unknown> {
+  await waitForNominatimSlot(fetcher);
+  const response = await fetcher(`${NOMINATIM_SEARCH_ENDPOINT}?${params.toString()}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("地点搜索服务暂时不可用");
+  return response.json();
+}
+
+export async function searchCities(
+  query: string,
+  fetcher: typeof fetch = fetch,
+): Promise<SearchResultBatch<CitySearchResult>> {
   const normalizedQuery = normalize(query);
-  if (!normalizedQuery) return [];
+  if (!normalizedQuery) return { results: [], provider: "geoapify" };
   const cached = cityCache.get(normalizedQuery);
   if (cached) return cached;
 
-  await waitForRemoteSearchSlot();
-  const params = new URLSearchParams({
-    q: query.trim(), format: "jsonv2", addressdetails: "1", featureType: "city", limit: "6", dedupe: "1", "accept-language": "zh-CN,zh,en",
+  const geoapifyParams = new URLSearchParams({
+    text: query.trim(),
+    format: "json",
+    lang: "zh",
+    limit: "6",
+    type: "city",
   });
-  const response = await fetcher(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error("城市搜索服务暂时不可用");
-  const payload = await response.json() as Array<{ place_id: number; name?: string; display_name: string; lat: string; lon: string; address?: { city?: string; town?: string; village?: string; municipality?: string; county?: string; state?: string; country?: string } }>;
-  const results = payload.map((place) => {
-    const address = place.address;
-    return {
-      name: place.name?.trim() || address?.city || address?.town || address?.village || address?.municipality || place.display_name.split(",")[0].trim(),
-      country: address?.country || "未标注国家",
-      latitude: Number(place.lat), longitude: Number(place.lon), aliases: [],
-    };
-  }).filter((city) => Number.isFinite(city.latitude) && Number.isFinite(city.longitude));
-  cityCache.set(normalizedQuery, results);
-  return results;
+  const geoapify = await requestGeoapify(geoapifyParams, fetcher);
+  if (geoapify.available) {
+    const results = geoapifyCityResults(geoapify.payload);
+    if (results.length > 0) {
+      const batch = { results, provider: "geoapify" as const };
+      cityCache.set(normalizedQuery, batch);
+      return batch;
+    }
+  }
+
+  const params = new URLSearchParams({
+    q: query.trim(),
+    format: "jsonv2",
+    addressdetails: "1",
+    featuretype: "city",
+    limit: "6",
+    dedupe: "1",
+    "accept-language": "zh-CN,zh,en",
+  });
+  const results = nominatimCityResults(await requestNominatim(params, fetcher));
+  const batch = { results, provider: "nominatim" as const };
+  cityCache.set(normalizedQuery, batch);
+  return batch;
 }
 
-export async function searchPlaces(input: SearchPlacesInput, fetcher: typeof fetch = fetch): Promise<PlaceSearchResult[]> {
-  const known = searchKnownPlaces(input);
-  if (known.length) return known;
-
-  const cacheKey = normalize(`${input.query}|${input.city}|${input.country ?? ""}`);
-  const cached = cache.get(cacheKey);
+export async function searchPlaces(
+  input: SearchPlacesInput,
+  fetcher: typeof fetch = fetch,
+): Promise<SearchResultBatch<PlaceSearchResult>> {
+  const cacheKey = JSON.stringify([normalize(input.query), input.city, input.country ?? ""]);
+  const cached = placeCache.get(cacheKey);
   if (cached) return cached;
 
-  const searchRemote = async (query: string) => {
-    await waitForRemoteSearchSlot();
-    const params = buildPlaceSearchParams({ ...input, query });
-    const response = await fetcher(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: { Accept: "application/json" } });
-    if (!response.ok) throw new Error("地点搜索服务暂时不可用");
-    const payload = await response.json() as Array<{ place_id: number; name?: string; display_name: string; lat: string; lon: string }>;
-    return payload.map((place) => ({ id: String(place.place_id), name: place.name?.trim() || place.display_name.split(",")[0].trim(), address: place.display_name, latitude: Number(place.lat), longitude: Number(place.lon) })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
-  };
-  let results = await searchRemote(input.query);
-  if (results.length === 0 && /机场|airport/i.test(input.query)) results = await searchRemote("airport");
-  cache.set(cacheKey, results);
-  return results;
+  const queries = expandInfrastructureQueries(input.query);
+  let geoapifyAvailable = true;
+  for (const query of queries) {
+    const response = await requestGeoapify(buildGeoapifySearchParams({ ...input, query }), fetcher);
+    if (!response.available) {
+      geoapifyAvailable = false;
+      break;
+    }
+    const results = geoapifyPlaceResults(response.payload);
+    if (results.length > 0) {
+      const batch = { results, provider: "geoapify" as const };
+      placeCache.set(cacheKey, batch);
+      return batch;
+    }
+  }
+
+  if (!geoapifyAvailable || queries.length > 0) {
+    for (const query of queries) {
+      const results = nominatimPlaceResults(
+        await requestNominatim(buildNominatimPlaceSearchParams({ ...input, query }), fetcher),
+      );
+      if (results.length > 0) {
+        const batch = { results, provider: "nominatim" as const };
+        placeCache.set(cacheKey, batch);
+        return batch;
+      }
+    }
+  }
+
+  const batch = { results: [], provider: "nominatim" as const };
+  placeCache.set(cacheKey, batch);
+  return batch;
 }

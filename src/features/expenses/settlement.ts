@@ -1,6 +1,13 @@
 import type { Expense, Participant } from "../../domain/models";
 
 export interface Transfer { fromId: string; toId: string; amountMinor: number; currency: string; }
+export interface ParticipantBalance {
+  participantId: string;
+  paidMinor: number;
+  owedMinor: number;
+  netMinor: number;
+  currency: string;
+}
 
 function allocateWeighted(amountMinor: number, ids: string[], weights: number[]) {
   if (!ids.length) throw new Error("至少需要一位分摊成员");
@@ -37,16 +44,7 @@ export function allocateExpense(expense: Expense, participants: Participant[]): 
 }
 
 export function settle(expenses: Expense[], participants: Participant[]) {
-  const byCurrency = new Map<string, Map<string, number>>();
-  for (const expense of expenses) {
-    if (expense.status !== "paid" || !expense.payerParticipantId) continue;
-    const balances = byCurrency.get(expense.currency) ?? new Map(participants.map((person) => [person.id, 0]));
-    byCurrency.set(expense.currency, balances);
-    balances.set(expense.payerParticipantId, (balances.get(expense.payerParticipantId) ?? 0) + expense.amountMinor);
-    const allocations = allocateExpense(expense, participants);
-    for (const [id, amountMinor] of Object.entries(allocations)) balances.set(id, (balances.get(id) ?? 0) - amountMinor);
-  }
-
+  const byCurrency = balanceMap(expenses, participants);
   const transfers: Transfer[] = [];
   for (const [currency, balances] of byCurrency) {
     const debtors = [...balances].filter(([, value]) => value < 0).map(([id, value]) => ({ id, value: -value }));
@@ -63,4 +61,44 @@ export function settle(expenses: Expense[], participants: Participant[]) {
     }
   }
   return transfers;
+}
+
+function balanceMap(expenses: Expense[], participants: Participant[]) {
+  const byCurrency = new Map<string, Map<string, number>>();
+  for (const expense of expenses) {
+    if (expense.status !== "paid" || !expense.payerParticipantId) continue;
+    const balances = byCurrency.get(expense.currency) ?? new Map(participants.map((person) => [person.id, 0]));
+    byCurrency.set(expense.currency, balances);
+    balances.set(expense.payerParticipantId, (balances.get(expense.payerParticipantId) ?? 0) + expense.amountMinor);
+    const allocations = allocateExpense(expense, participants);
+    for (const [id, amountMinor] of Object.entries(allocations)) balances.set(id, (balances.get(id) ?? 0) - amountMinor);
+  }
+  return byCurrency;
+}
+
+export function participantBalances(expenses: Expense[], participants: Participant[]): ParticipantBalance[] {
+  const paidByCurrency = new Map<string, Map<string, number>>();
+  const owedByCurrency = new Map<string, Map<string, number>>();
+  for (const expense of expenses) {
+    if (expense.status !== "paid" || !expense.payerParticipantId) continue;
+    const paid = paidByCurrency.get(expense.currency) ?? new Map(participants.map((person) => [person.id, 0]));
+    const owed = owedByCurrency.get(expense.currency) ?? new Map(participants.map((person) => [person.id, 0]));
+    paidByCurrency.set(expense.currency, paid);
+    owedByCurrency.set(expense.currency, owed);
+    paid.set(expense.payerParticipantId, (paid.get(expense.payerParticipantId) ?? 0) + expense.amountMinor);
+    for (const [id, amountMinor] of Object.entries(allocateExpense(expense, participants))) {
+      owed.set(id, (owed.get(id) ?? 0) + amountMinor);
+    }
+  }
+  return [...paidByCurrency].flatMap(([currency, paid]) => participants.map((person) => {
+    const paidMinor = paid.get(person.id) ?? 0;
+    const owedMinor = owedByCurrency.get(currency)?.get(person.id) ?? 0;
+    return {
+      participantId: person.id,
+      paidMinor,
+      owedMinor,
+      netMinor: paidMinor - owedMinor,
+      currency,
+    };
+  }));
 }
