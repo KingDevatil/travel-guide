@@ -18,4 +18,10 @@ describe("TripList", () => {
     expect(onSelect).toHaveBeenCalledWith("trip-1");
     expect(onEdit).toHaveBeenCalledWith(trip);
   });
+
+  it("shows an inferred icon for a trip that has no stored icon", () => {
+    const automaticTrip: Trip = { ...trip, id: "trip-2", title: "浦东国际机场接送", icon: undefined };
+    render(<TripList trips={[automaticTrip]} onSelect={vi.fn()} onCreate={vi.fn()} onEdit={vi.fn()} onDuplicate={vi.fn()} onArchive={vi.fn()} onRestore={vi.fn()} onDelete={vi.fn()} />);
+    expect(screen.getByRole("img", { name: "行程图标：航空" })).toBeInTheDocument();
+  });
 });

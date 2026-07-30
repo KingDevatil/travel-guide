@@ -4,11 +4,12 @@ import type { Trip } from "../../domain/models";
 import type { TripDraft } from "../../hooks/useTrips";
 import { getStops } from "../../db/trip-repository";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
-import { DEFAULT_TRIP_ICON, TRIP_ICON_OPTIONS } from "./trip-icon-options";
+import { TRIP_ICON_OPTIONS, getTripIconOption } from "./trip-icon-options";
+import { inferTripIconName } from "./infer-trip-icon";
 
 interface TripEditorProps { trip?: Trip; onSave: (draft: TripDraft) => Promise<void>; onClose: () => void; }
-const emptyDraft: TripDraft = { title: "", icon: DEFAULT_TRIP_ICON, startDate: "", endDate: "", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai", defaultCurrency: "CNY" };
-const toDraft = (trip?: Trip): TripDraft => trip ? { ...trip, icon: trip.icon ?? DEFAULT_TRIP_ICON } : emptyDraft;
+const emptyDraft: TripDraft = { title: "", icon: undefined, startDate: "", endDate: "", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai", defaultCurrency: "CNY" };
+const toDraft = (trip?: Trip): TripDraft => trip ? { ...trip } : emptyDraft;
 
 export function TripEditor({ trip, onSave, onClose }: TripEditorProps) {
   const panelRef = useDialogAccessibility<HTMLFormElement>(true, onClose);
@@ -17,6 +18,9 @@ export function TripEditor({ trip, onSave, onClose }: TripEditorProps) {
   const [error, setError] = useState("");
   useEffect(() => setDraft(toDraft(trip)), [trip]);
   const update = <K extends keyof TripDraft>(key: K, value: TripDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
+  const automaticIcon = inferTripIconName(draft.title);
+  const effectiveIcon = draft.icon ?? automaticIcon;
+  const effectiveIconOption = getTripIconOption(effectiveIcon);
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!draft.title.trim() || !draft.startDate || !draft.endDate) return setError("请填写标题与起止日期。");
@@ -31,11 +35,14 @@ export function TripEditor({ trip, onSave, onClose }: TripEditorProps) {
       <label className="dialog-field">行程名称<input className="dialog-input" autoFocus value={draft.title} onChange={(e) => update("title", e.target.value)} /></label>
       <fieldset className="trip-icon-picker dialog-wide">
         <legend>行程图标</legend>
-        <p>选择一个容易辨认的主题图标。</p>
+        <div className="trip-icon-picker__summary">
+          <p>{draft.icon ? `已手动选择“${effectiveIconOption.label}”。` : `自动匹配：已根据行程名称选择“${effectiveIconOption.label}”。`}</p>
+          {draft.icon && <button type="button" onClick={() => update("icon", undefined)}>恢复自动匹配</button>}
+        </div>
         <div className="trip-icon-picker__grid">
           {TRIP_ICON_OPTIONS.map(({ value, label, Icon }) => <label key={value}>
-            <input type="radio" name="trip-icon" value={value} checked={(draft.icon ?? DEFAULT_TRIP_ICON) === value} onChange={() => update("icon", value)} aria-label={`选择图标：${label}`} />
-            <span><Icon aria-hidden="true" /><b>{label}</b></span>
+            <input type="radio" name="trip-icon" value={value} checked={effectiveIcon === value} onChange={() => update("icon", value)} aria-label={`选择图标：${label}`} />
+            <span><Icon aria-hidden="true" /><b>{label}</b>{!draft.icon && effectiveIcon === value && <small>自动</small>}</span>
           </label>)}
         </div>
       </fieldset>

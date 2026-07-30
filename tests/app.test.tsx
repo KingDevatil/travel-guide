@@ -297,6 +297,38 @@ describe("App", () => {
     expect(within(screen.getByRole("dialog", { name: "我的行程" })).getByRole("img", { name: "行程图标：航空" })).toBeInTheDocument();
   });
 
+  it("infers an unset trip icon from the title while preserving manual overrides", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "管理行程" }));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const editor = screen.getByRole("dialog", { name: "编辑行程" });
+    const title = within(editor).getByLabelText("行程名称");
+
+    await user.clear(title);
+    await user.type(title, "浦东国际机场接送");
+    expect(within(editor).getByRole("radio", { name: "选择图标：航空" })).toBeChecked();
+    expect(within(editor).getByText("自动匹配：已根据行程名称选择“航空”。")).toBeInTheDocument();
+
+    await user.click(within(editor).getByRole("radio", { name: "选择图标：海岛" }));
+    await user.clear(title);
+    await user.type(title, "国际机场海岛之旅");
+    expect(within(editor).getByRole("radio", { name: "选择图标：海岛" })).toBeChecked();
+    expect(within(editor).getByText("已手动选择“海岛”。")).toBeInTheDocument();
+
+    await user.click(within(editor).getByRole("button", { name: "恢复自动匹配" }));
+    expect(within(editor).getByRole("radio", { name: "选择图标：航空" })).toBeChecked();
+    await user.click(within(editor).getByRole("button", { name: "保存" }));
+
+    await waitFor(async () => {
+      const saved = await db.trips.get("starter-test-trip");
+      expect(saved).toMatchObject({ title: "国际机场海岛之旅" });
+      expect(saved?.icon).toBeUndefined();
+    });
+    expect(await screen.findByRole("img", { name: "行程图标：航空" })).toBeInTheDocument();
+  });
+
   it("deletes the last trip without recreating the starter trip", async () => {
     const user = userEvent.setup();
     const firstRender = render(<App />);
