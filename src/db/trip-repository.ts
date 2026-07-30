@@ -272,6 +272,107 @@ export async function reorderStops(
   if (tripId) notifyTripChanged(tripId);
 }
 
+async function normalizeDateSortOrder(tripId: string, date: string): Promise<void> {
+  const dayStops = await db.stops.where({ tripId, date }).sortBy("sortOrder");
+  for (const [sortOrder, stop] of dayStops.entries()) {
+    if (stop.sortOrder !== sortOrder) await db.stops.update(stop.id, { sortOrder });
+  }
+}
+
+export async function moveStopToDate(id: string, date: string): Promise<void> {
+  let tripId: string | undefined;
+  await db.transaction("rw", [db.stops], async () => {
+    const stop = await db.stops.get(id);
+    if (!stop || stop.date === date) return;
+    tripId = stop.tripId;
+    const destination = await db.stops.where({ tripId: stop.tripId, date }).toArray();
+    await db.stops.update(id, { date, sortOrder: destination.length, unscheduled: false });
+    await normalizeDateSortOrder(stop.tripId, stop.date);
+  });
+  if (tripId) notifyTripChanged(tripId);
+}
+
+export async function duplicateStop(id: string, targetDate?: string): Promise<string> {
+  let tripId = "";
+  let newId = "";
+  await db.transaction("rw", [db.stops], async () => {
+    const source = await db.stops.get(id);
+    if (!source) throw new Error("安排不存在");
+    tripId = source.tripId;
+    newId = crypto.randomUUID();
+    const date = targetDate ?? source.date;
+    const destination = await db.stops.where({ tripId: source.tripId, date }).toArray();
+    await db.stops.add({
+      ...source,
+      id: newId,
+      date,
+      sortOrder: destination.length,
+      title: `${source.title} 副本`,
+      unscheduled: targetDate ? false : source.unscheduled,
+    });
+  });
+  notifyTripChanged(tripId);
+  return newId;
+}
+
+export async function duplicateDay(tripId: string, sourceDate: string, targetDate: string): Promise<number> {
+  let copied = 0;
+  await db.transaction("rw", [db.stops, db.legs], async () => {
+    const sourceStops = await db.stops.where({ tripId, date: sourceDate }).sortBy("sortOrder");
+    if (!sourceStops.length) return;
+    const destinationStops = await db.stops.where({ tripId, date: targetDate }).toArray();
+    const idMap = new Map(sourceStops.map((stop) => [stop.id, crypto.randomUUID()]));
+    await db.stops.bulkAdd(sourceStops.map((stop, index) => ({
+      ...stop,
+      id: idMap.get(stop.id)!,
+      date: targetDate,
+      sortOrder: destinationStops.length + index,
+      unscheduled: false,
+    })));
+    const sourceIds = new Set(sourceStops.map((stop) => stop.id));
+    const sourceLegs = await db.legs.where("tripId").equals(tripId)
+      .filter((leg) => sourceIds.has(leg.fromStopId) && sourceIds.has(leg.toStopId))
+      .toArray();
+    await db.legs.bulkAdd(sourceLegs.map((leg) => ({
+      ...leg,
+      id: crypto.randomUUID(),
+      fromStopId: idMap.get(leg.fromStopId)!,
+      toStopId: idMap.get(leg.toStopId)!,
+      expenseId: undefined,
+    })));
+    copied = sourceStops.length;
+  });
+  if (copied) notifyTripChanged(tripId);
+  return copied;
+}
+
+export async function bulkMoveStops(ids: string[], targetDate: string): Promise<number> {
+  let tripId = "";
+  let moved = 0;
+  await db.transaction("rw", [db.stops], async () => {
+    const selected = (await db.stops.bulkGet(ids)).filter((stop): stop is Stop => Boolean(stop));
+    if (!selected.length) return;
+    tripId = selected[0].tripId;
+    if (selected.some((stop) => stop.tripId !== tripId)) throw new Error("只能批量移动同一行程内的安排");
+    const sourceDates = new Set(selected.map((stop) => stop.date));
+    const selectedIds = new Set(selected.map((stop) => stop.id));
+    const destination = (await db.stops.where({ tripId, date: targetDate }).sortBy("sortOrder"))
+      .filter((stop) => !selectedIds.has(stop.id));
+    for (const [index, stop] of selected.entries()) {
+      await db.stops.update(stop.id, {
+        date: targetDate,
+        sortOrder: destination.length + index,
+        unscheduled: false,
+      });
+    }
+    for (const date of sourceDates) await normalizeDateSortOrder(tripId, date);
+    await normalizeDateSortOrder(tripId, targetDate);
+    moved = selected.length;
+  });
+  if (moved) notifyTripChanged(tripId);
+  return moved;
+}
+
 // ---------------------------------------------------------------------------
 // Legs
 // ---------------------------------------------------------------------------

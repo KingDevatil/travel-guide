@@ -1,1 +1,1 @@
-export type ViewMode = "itinerary" | "map" | "expenses" | "packing";
+export type ViewMode = "overview" | "itinerary" | "map" | "expenses" | "packing";

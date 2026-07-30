@@ -21,11 +21,14 @@ export interface Trip {
   id: string;
   schemaVersion: 1;
   title: string;
+  destination?: string;
   icon?: TripIconName;
   startDate: string;
   endDate: string;
   timezone: string;
   defaultCurrency: CurrencyCode;
+  budgetMinor?: number;
+  categoryBudgetsMinor?: Record<string, number>;
   participantIds: string[];
   archivedAt?: string;
   createdAt: string;
@@ -38,12 +41,24 @@ export interface Participant {
   name: string;
 }
 
+export type StopKind =
+  | "place"
+  | "lodging"
+  | "food"
+  | "flight"
+  | "train"
+  | "drive"
+  | "activity"
+  | "other";
+
 export interface Stop {
   id: string;
   tripId: string;
   date: string;
   sortOrder: number;
   title: string;
+  kind?: StopKind;
+  unscheduled?: boolean;
   country?: string;
   city?: string;
   address?: string;
@@ -54,6 +69,9 @@ export interface Stop {
   timezone?: string;
   content?: string;
   notes?: string;
+  bookingReference?: string;
+  contactInfo?: string;
+  documentUrl?: string;
 }
 
 export type TransportMode =
@@ -70,6 +88,9 @@ export interface Leg {
   arrivesAt?: string;
   serviceNumber?: string;
   notes?: string;
+  bookingReference?: string;
+  contactInfo?: string;
+  documentUrl?: string;
   routeGeoJson?: LineString;
   expenseId?: string;
 }

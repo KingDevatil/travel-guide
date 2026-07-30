@@ -76,6 +76,6 @@ export function inferTripIconName(value: string): TripIconName {
   return result;
 }
 
-export function resolveTripIconName(trip: Pick<Trip, "icon" | "title">): TripIconName {
-  return trip.icon ?? inferTripIconName(trip.title);
+export function resolveTripIconName(trip: Pick<Trip, "icon" | "title" | "destination">): TripIconName {
+  return trip.icon ?? inferTripIconName(`${trip.title} ${trip.destination ?? ""}`);
 }

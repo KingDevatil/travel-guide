@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Leg, Stop } from "../domain/models";
 import { subscribeTripChanges } from "../db/change-events";
-import { addExpense, addLeg, addStop, deleteLeg, deleteStop, getExpenses, getLegs, getStops, reorderStops, updateExpense, updateLeg, updateStop } from "../db/trip-repository";
+import { addExpense, addLeg, addStop, bulkMoveStops, deleteLeg, deleteStop, duplicateDay, duplicateStop, getExpenses, getLegs, getStops, moveStopToDate, reorderStops, updateExpense, updateLeg, updateStop } from "../db/trip-repository";
 
 export type StopDraft = Omit<Stop, "id" | "tripId" | "sortOrder">;
 export type LegDraft = Omit<Leg, "id" | "tripId"> & { expenseAmountMinor?: number; expenseCurrency?: string };
@@ -31,7 +31,7 @@ export function useItinerary(tripId?: string) {
   }, [refresh, stops, tripId]);
   const saveLeg = useCallback(async (draft: LegDraft, current?: Leg) => {
     if (!tripId) throw new Error("请选择行程");
-    if (!draft.fromStopId || !draft.toStopId || draft.fromStopId === draft.toStopId) throw new Error("请选择两个不同的行程节点");
+    if (!draft.fromStopId || !draft.toStopId || draft.fromStopId === draft.toStopId) throw new Error("请选择两个不同的行程安排");
     if (draft.arrivesAt && draft.departsAt && draft.arrivesAt < draft.departsAt) throw new Error("到达时间不能早于出发时间");
     const { expenseAmountMinor, expenseCurrency, ...legDraft } = draft;
     const leg: Leg = current ? { ...current, ...legDraft } : { ...legDraft, id: crypto.randomUUID(), tripId };
@@ -72,5 +72,44 @@ export function useItinerary(tripId?: string) {
     await reorderStops(dayStops.map((item, order) => item.id === stop.id ? { id: item.id, sortOrder: other.sortOrder } : item.id === other.id ? { id: item.id, sortOrder: stop.sortOrder } : { id: item.id, sortOrder: order }));
     await refresh();
   }, [refresh, stops]);
-  return { stops, legs, loading, refresh, saveStop, saveLeg, moveStop, deleteStop: async (id: string) => { await deleteStop(id); await refresh(); }, deleteLeg: async (id: string) => { await deleteLeg(id); await refresh(); } };
+  const moveToDate = useCallback(async (id: string, date: string) => {
+    await moveStopToDate(id, date);
+    await refresh();
+  }, [refresh]);
+  const copyStop = useCallback(async (id: string, date?: string) => {
+    const newId = await duplicateStop(id, date);
+    await refresh();
+    return newId;
+  }, [refresh]);
+  const copyDay = useCallback(async (sourceDate: string, targetDate: string) => {
+    if (!tripId) return 0;
+    const copied = await duplicateDay(tripId, sourceDate, targetDate);
+    await refresh();
+    return copied;
+  }, [refresh, tripId]);
+  const moveMany = useCallback(async (ids: string[], date: string) => {
+    const moved = await bulkMoveStops(ids, date);
+    await refresh();
+    return moved;
+  }, [refresh]);
+  const reorderDay = useCallback(async (orderedStops: Stop[]) => {
+    await reorderStops(orderedStops.map((stop, sortOrder) => ({ id: stop.id, sortOrder })));
+    await refresh();
+  }, [refresh]);
+  return {
+    stops,
+    legs,
+    loading,
+    refresh,
+    saveStop,
+    saveLeg,
+    moveStop,
+    moveToDate,
+    copyStop,
+    copyDay,
+    moveMany,
+    reorderDay,
+    deleteStop: async (id: string) => { await deleteStop(id); await refresh(); },
+    deleteLeg: async (id: string) => { await deleteLeg(id); await refresh(); },
+  };
 }

@@ -10,7 +10,7 @@ import {
   updateTrip,
 } from "../db/trip-repository";
 
-export type TripDraft = Pick<Trip, "title" | "icon" | "startDate" | "endDate" | "timezone" | "defaultCurrency">;
+export type TripDraft = Pick<Trip, "title" | "destination" | "icon" | "startDate" | "endDate" | "timezone" | "defaultCurrency" | "budgetMinor" | "categoryBudgetsMinor">;
 
 function makeTrip(draft: TripDraft): Trip {
   const now = new Date().toISOString();

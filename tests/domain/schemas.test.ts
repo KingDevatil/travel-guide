@@ -36,6 +36,16 @@ describe("tripSchema", () => {
     expect(tripSchema.safeParse({ ...validTrip, icon: "rocket" }).success).toBe(false);
   });
 
+  it("accepts optional destination and non-negative budgets", () => {
+    expect(tripSchema.safeParse({
+      ...validTrip,
+      destination: "东京",
+      budgetMinor: 100_000,
+      categoryBudgetsMinor: { 住宿: 40_000 },
+    }).success).toBe(true);
+    expect(tripSchema.safeParse({ ...validTrip, budgetMinor: -1 }).success).toBe(false);
+  });
+
   it("accepts a trip with optional archivedAt", () => {
     const result = tripSchema.safeParse({
       ...validTrip,

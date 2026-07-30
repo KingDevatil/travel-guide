@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createItineraryHtml } from "../../src/features/transfer/export-itinerary-html";
-import type { PackingItem, Stop, Trip } from "../../src/domain/models";
+import type { Leg, PackingItem, Stop, Trip } from "../../src/domain/models";
 
 const trip: Trip = { id: "trip-1", schemaVersion: 1, title: "印尼之旅", startDate: "2026-09-27", endDate: "2026-09-28", timezone: "Asia/Jakarta", defaultCurrency: "IDR", participantIds: [], createdAt: "2026-01-01", updatedAt: "2026-01-01" };
 const stop: Stop = { id: "stop-1", tripId: trip.id, date: "2026-09-27", sortOrder: 1, title: "朱安达国际机场", city: "泗水", address: "Sidoarjo", latitude: 0, longitude: 0, startsAt: "2026-09-27T10:00:00+07:00", content: "抵达后前往酒店" };
@@ -15,5 +15,15 @@ describe("itinerary HTML export", () => {
     expect(html).toContain("护照");
     expect(html).toContain("必带");
     expect(html).not.toContain("账单");
+  });
+
+  it("includes booking details and only emits safe document links", () => {
+    const bookedStop = { ...stop, bookingReference: "HOTEL-123", documentUrl: "https://example.com/ticket" };
+    const leg: Leg = { id: "leg-1", tripId: trip.id, fromStopId: stop.id, toStopId: stop.id, mode: "flight", bookingReference: "PNR-456", documentUrl: "javascript:alert(1)" };
+    const html = createItineraryHtml(trip, [bookedStop], [], [leg]);
+    expect(html).toContain("HOTEL-123");
+    expect(html).toContain("PNR-456");
+    expect(html).toContain("https://example.com/ticket");
+    expect(html).not.toContain("javascript:alert");
   });
 });

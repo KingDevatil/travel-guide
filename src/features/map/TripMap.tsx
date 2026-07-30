@@ -70,6 +70,6 @@ export function TripMap({ stops, legs, day, selectedStopId, fitRequest = 0, onSe
     source?.setData(itineraryGeoJson(stops, legs, day));
     focusMap(map, stops, day, selectedStopId);
   }, [day, fitRequest, legs, selectedStopId, stops]);
-  if (failed) return <div className="trip-map__fallback"><p>地图暂时不可用，但行程节点仍可编辑。</p><button onClick={() => { setFailed(false); setRetryKey((value) => value + 1); }}>重试地图</button></div>;
+  if (failed) return <div className="trip-map__fallback"><p>地图暂时不可用，但行程安排仍可编辑。</p><button onClick={() => { setFailed(false); setRetryKey((value) => value + 1); }}>重试地图</button></div>;
   return <div className="trip-map" ref={host} aria-label="行程地图" />;
 }

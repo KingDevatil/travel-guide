@@ -22,6 +22,10 @@ const tripIconSchema = z.enum([
   "beach", "culture", "food", "camera", "business",
 ]);
 
+const stopKindSchema = z.enum([
+  "place", "lodging", "food", "flight", "train", "drive", "activity", "other",
+]);
+
 export const participantSchema = z.object({
   id: idSchema,
   tripId: idSchema,
@@ -34,6 +38,8 @@ export const stopSchema = z.object({
   date: z.string().regex(isoDatePattern, "date must be YYYY-MM-DD"),
   sortOrder: z.number().int().min(0),
   title: z.string().min(1, "stop title must not be empty"),
+  kind: stopKindSchema.optional(),
+  unscheduled: z.boolean().optional(),
   country: z.string().optional(),
   city: z.string().optional(),
   address: z.string().optional(),
@@ -44,6 +50,9 @@ export const stopSchema = z.object({
   timezone: z.string().min(1, "timezone must not be empty").optional(),
   content: z.string().optional(),
   notes: z.string().optional(),
+  bookingReference: z.string().max(200).optional(),
+  contactInfo: z.string().max(500).optional(),
+  documentUrl: z.string().url("documentUrl must be a valid URL").optional(),
 });
 
 const coordinatePairSchema = z.tuple([
@@ -67,6 +76,9 @@ export const legSchema = z.object({
   arrivesAt: z.string().regex(scheduledDatetimePattern, "arrivesAt must be a scheduled datetime").optional(),
   serviceNumber: z.string().optional(),
   notes: z.string().optional(),
+  bookingReference: z.string().max(200).optional(),
+  contactInfo: z.string().max(500).optional(),
+  documentUrl: z.string().url("documentUrl must be a valid URL").optional(),
   routeGeoJson: lineStringSchema.optional(),
   expenseId: idSchema.optional(),
 });
@@ -107,11 +119,14 @@ export const tripSchema = z.object({
   id: idSchema,
   schemaVersion: z.literal(1),
   title: z.string().min(1, "trip title must not be empty"),
+  destination: z.string().max(160).optional(),
   icon: tripIconSchema.optional(),
   startDate: z.string().regex(isoDatePattern, "startDate must be YYYY-MM-DD"),
   endDate: z.string().regex(isoDatePattern, "endDate must be YYYY-MM-DD"),
   timezone: z.string().min(1, "timezone must not be empty"),
   defaultCurrency: currencyCodeSchema,
+  budgetMinor: z.number().int().min(0).optional(),
+  categoryBudgetsMinor: z.record(z.string(), z.number().int().min(0)).optional(),
   participantIds: z.array(idSchema),
   archivedAt: z.string().regex(isoDatetimePattern, "archivedAt must be ISO 8601 datetime").optional(),
   createdAt: z.string().regex(isoDatetimePattern, "createdAt must be ISO 8601 datetime"),
